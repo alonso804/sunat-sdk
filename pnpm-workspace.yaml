@@ -1,0 +1,4 @@
+allowBuilds:
+  # pnpm bloquea por defecto los scripts de instalación de las dependencias; aquí se permite
+  # únicamente el de esbuild (lo usan tsup, tsx y vitest), que solo verifica y optimiza su binario.
+  esbuild: true

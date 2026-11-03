@@ -1,0 +1,17 @@
+{
+  "series": "F001",
+  "number": 1,
+  "currency": "PEN",
+  "customer": {
+    "ruc": "20131312955",
+    "name": "RAZON SOCIAL DEL CLIENTE (EJEMPLO)",
+    "address": "DIRECCION DEL CLIENTE (EJEMPLO)"
+  },
+  "items": [
+    { "description": "DESCRIPCION DEL PRODUCTO (EJEMPLO)", "quantity": 1, "unit": "NIU", "unitValue": "12.00", "igvAffectation": "10" }
+  ],
+  "payment": { "type": "credit", "installments": [{ "dueDate": "2027-01-10" }] },
+  "purchaseOrder": "10194",
+  "relatedDespatches": [{ "series": "T001", "number": 1 }],
+  "note": "OBSERVACION OPCIONAL"
+}

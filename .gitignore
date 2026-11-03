@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Secretos: nunca versionar credenciales ni certificados
+.env
+.env.*
+!.env.example
+certs/
+*.pfx
+*.p12
+*.pem
+*.key
+
+# Salida de scripts (XML firmados y CDR de pruebas)
+out/

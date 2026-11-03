@@ -1,0 +1,61 @@
+{
+  "name": "@alonso804/sunat-sdk",
+  "version": "0.1.0",
+  "description": "SDK en TypeScript para integrarse directo con SUNAT (facturas y guías de remisión electrónicas) sin PSE/OSE",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/alonso804/sunat-sdk.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "tsc --noEmit && vitest run && tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:beta": "SUNAT_BETA=1 vitest run test/beta.integration.test.ts"
+  },
+  "dependencies": {
+    "decimal.js": "^10.6.0",
+    "fast-xml-parser": "^5.11.2",
+    "fflate": "^0.8.3",
+    "node-forge": "^1.4.2",
+    "xml-crypto": "^6.4.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/node-forge": "^1.3.14",
+    "tsup": "^9.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
+  }
+}
