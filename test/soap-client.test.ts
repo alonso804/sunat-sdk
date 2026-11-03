@@ -80,6 +80,15 @@ describe('respuestas de sendBill', () => {
     }
   });
 
+  it('no toma como código un número en medio del faultstring (p. ej. la serie y el número)', () => {
+    try {
+      parseSendBillResponse(500, faultResponse('soap-env:Server', 'Error al procesar F001-2500'));
+      expect.unreachable();
+    } catch (error) {
+      expect((error as SunatFaultError).kind).toBe('unknown');
+    }
+  });
+
   it('trata una respuesta sin fault ni CDR como error de transporte reintentable', () => {
     expect(() => parseSendBillResponse(502, '<html>Bad gateway</html>')).toThrow(SunatTransportError);
     try {
@@ -113,13 +122,14 @@ describe('CDR', () => {
 
 describe('SunatClient.sendInvoice (fetch simulado)', () => {
   const { key } = testCertificate();
-  const makeClient = (fetchMock: typeof fetch) =>
+  const makeClient = (fetchMock: typeof fetch, retry: { maxRetries?: number } = {}) =>
     new SunatClient({
       environment: 'beta',
       issuer: TEST_ISSUER,
       sol: { user: 'MODDATOS', password: 'MODDATOS' },
       signingKey: key,
       fetch: fetchMock,
+      retry: { delayMs: 0, ...retry },
     });
   const respond = (body: string, status = 200) => vi.fn(async () => new Response(body, { status })) as unknown as typeof fetch;
 
@@ -166,5 +176,69 @@ describe('SunatClient.sendInvoice (fetch simulado)', () => {
     }) as unknown as typeof fetch;
     const client = makeClient(failing);
     await expect(client.sendInvoice(client.prepareInvoice(sampleInvoice()))).rejects.toBeInstanceOf(SunatTransportError);
+  });
+
+  describe('reintentos', () => {
+    const ok = () => new Response(sendBillOkResponse(BASE, cdrXml({ reference: 'F001-1', code: '0', description: 'aceptada' })), { status: 200 });
+    const proxy401 = () => new Response('<html><body><h1>401 Authorization Required</h1></body></html>', { status: 401 });
+    /** Error de `fetch` cuando la conexión no llegó a abrirse (misma forma que produce Node). */
+    const refused = () => Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }) });
+    const calls = (mock: unknown) => (mock as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    it('reintenta el 401 del proxy (peticiones muy seguidas) y la factura queda aceptada', async () => {
+      const mock = vi.fn().mockResolvedValueOnce(proxy401()).mockResolvedValueOnce(proxy401()).mockResolvedValueOnce(ok());
+      const client = makeClient(mock as unknown as typeof fetch);
+      const result = await client.sendInvoice(client.prepareInvoice(sampleInvoice()));
+      expect(result.status).toBe('accepted');
+      expect(calls(mock)).toBe(3);
+    });
+
+    it('un 401 persistente se reintenta con tope y luego lanza', async () => {
+      const mock = vi.fn(async () => proxy401());
+      const client = makeClient(mock as unknown as typeof fetch, { maxRetries: 2 });
+      const error = await client.sendInvoice(client.prepareInvoice(sampleInvoice())).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(SunatTransportError);
+      expect((error as SunatTransportError).httpStatus).toBe(401);
+      expect(calls(mock)).toBe(3); // 1 intento + 2 reintentos
+    });
+
+    it('reintenta si la conexión no llegó a abrirse', async () => {
+      const mock = vi.fn().mockRejectedValueOnce(refused()).mockResolvedValueOnce(ok());
+      const client = makeClient(mock as unknown as typeof fetch);
+      expect((await client.sendInvoice(client.prepareInvoice(sampleInvoice()))).status).toBe('accepted');
+      expect(calls(mock)).toBe(2);
+    });
+
+    it('NO reenvía si la petición pudo haber llegado (corte, espera agotada o 502)', async () => {
+      const failures: Array<() => Promise<Response>> = [
+        async () => {
+          throw new TypeError('fetch failed'); // corte sin código de conexión: ambiguo
+        },
+        async () => {
+          throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+        },
+        async () => new Response('<html>502 Bad Gateway</html>', { status: 502 }),
+      ];
+      for (const failure of failures) {
+        const mock = vi.fn(failure);
+        const client = makeClient(mock as unknown as typeof fetch);
+        await expect(client.sendInvoice(client.prepareInvoice(sampleInvoice()))).rejects.toBeInstanceOf(SunatTransportError);
+        expect(calls(mock)).toBe(1);
+      }
+    });
+
+    it('no reintenta un fault de SUNAT (rechazo o excepción)', async () => {
+      const mock = vi.fn(async () => new Response(faultResponse('soap-env:Client.0111', 'No tiene el perfil'), { status: 500 }));
+      const client = makeClient(mock as unknown as typeof fetch);
+      await expect(client.sendInvoice(client.prepareInvoice(sampleInvoice()))).rejects.toBeInstanceOf(SunatFaultError);
+      expect(calls(mock)).toBe(1);
+    });
+
+    it('`maxRetries: 0` desactiva los reintentos', async () => {
+      const mock = vi.fn(async () => proxy401());
+      const client = makeClient(mock as unknown as typeof fetch, { maxRetries: 0 });
+      await expect(client.sendInvoice(client.prepareInvoice(sampleInvoice()))).rejects.toBeInstanceOf(SunatTransportError);
+      expect(calls(mock)).toBe(1);
+    });
   });
 });

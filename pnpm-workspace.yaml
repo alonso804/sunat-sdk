@@ -2,3 +2,7 @@ allowBuilds:
   # pnpm bloquea por defecto los scripts de instalación de las dependencias; aquí se permite
   # únicamente el de esbuild (lo usan tsup, tsx y vitest), que solo verifica y optimiza su binario.
   esbuild: true
+
+# Los scripts se ejecutan con el shell multiplataforma de pnpm: así `VAR=1 comando` (p. ej. `test:beta`) también
+# funciona en Windows, donde el shell por defecto es cmd.
+shellEmulator: true

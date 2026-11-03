@@ -12,7 +12,12 @@ export const AddressSchema = z.object({
   urbanization: z.string().max(100).optional(),
   /** Código del establecimiento anexo; "0000" es el domicilio fiscal. */
   establishmentCode: z.string().regex(/^\d{4}$/).default('0000'),
-  countryCode: z.string().length(2).default('PE'),
+  /** Código de país ISO 3166-1 de 2 letras. */
+  countryCode: z
+    .string()
+    .transform((v) => v.trim().toUpperCase())
+    .pipe(z.string().regex(/^[A-Z]{2}$/, 'El código de país tiene 2 letras, por ejemplo PE'))
+    .default('PE'),
 });
 
 /** Datos del contribuyente que emite (el titular del RUC). */

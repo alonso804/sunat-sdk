@@ -21,6 +21,7 @@ export type { DespatchPdf, DespatchPdfOptions } from './gre/pdf';
 export { RELATED_DOCUMENT_TYPES, TRANSFER_REASONS } from './catalogs';
 
 export { SunatApiError, SunatError, SunatFaultError, SunatTransportError, SunatValidationError } from './errors';
+export type { RetryOptions } from './retry';
 
 export { InvoiceSchema, IssuerSchema } from './invoice/schema';
 export type {

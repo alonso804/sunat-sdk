@@ -19,6 +19,7 @@ import { fmt2, fmtUpTo } from './money';
 import { amountInWords } from './numero-a-letras';
 import type { SigningKey } from './signing/certificate';
 import { extractDigestValue, signUblXml, type SignatureAlgorithm } from './signing/xmldsig';
+import { isRetryableRead, isSafeToResend, withRetries, type RetryOptions } from './retry';
 import { getStatusCdr, sendBill } from './soap/bill-service';
 import { toValidationError } from './validation';
 import { limaDateTime } from './xml';
@@ -51,6 +52,13 @@ export interface SunatClientConfig {
   /** Para pruebas o proxies. Por defecto el `fetch` global. */
   fetch?: typeof fetch;
   timeoutMs?: number;
+  /**
+   * Reintentos automáticos (por defecto 3, con pausas de 1 s, 2 s y 4 s; `{ maxRetries: 0 }` los desactiva).
+   * - Envíos (`sendInvoice`, `sendDespatch`): solo si SUNAT con seguridad no procesó la petición (401/429/503 del
+   *   proxy, o la conexión no llegó a abrirse). Un corte con la petición ya enviada no se reintenta.
+   * - Lecturas (token de la API, `getInvoiceStatus`, `getDespatchStatus`): ante cualquier fallo pasajero.
+   */
+  retry?: RetryOptions;
   /** Reloj inyectable (pruebas). */
   now?: () => Date;
 }
@@ -208,14 +216,18 @@ export class SunatClient {
 
     let applicationResponse: string;
     try {
-      applicationResponse = await sendBill({
-        endpoint: ENDPOINTS[this.config.environment].billService,
-        auth: { username: `${this.issuer.ruc}${this.config.sol.user}`, password: this.config.sol.password },
-        fileName: `${baseName}.zip`,
-        zipBase64: Buffer.from(zip).toString('base64'),
-        ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
-        ...(this.config.timeoutMs ? { timeoutMs: this.config.timeoutMs } : {}),
-      });
+      applicationResponse = await withRetries(
+        () =>
+          sendBill({
+            endpoint: ENDPOINTS[this.config.environment].billService,
+            auth: { username: `${this.issuer.ruc}${this.config.sol.user}`, password: this.config.sol.password },
+            fileName: `${baseName}.zip`,
+            zipBase64: Buffer.from(zip).toString('base64'),
+            ...this.restOptions(),
+          }),
+        isSafeToResend,
+        this.config.retry,
+      );
     } catch (error) {
       if (error instanceof SunatFaultError && error.kind === 'rejected') {
         return { status: 'rejected', baseName, code: error.code, message: error.sunatMessage };
@@ -262,13 +274,17 @@ export class SunatClient {
         `El servicio de consulta de CDR no está disponible en el ambiente "${this.config.environment}": SUNAT solo lo publica para producción.`,
       );
     }
-    const response = await getStatusCdr({
-      endpoint,
-      auth: { username: `${this.issuer.ruc}${this.config.sol.user}`, password: this.config.sol.password },
-      query: { ruc: this.issuer.ruc, type, series, number: query.number },
-      ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
-      ...(this.config.timeoutMs ? { timeoutMs: this.config.timeoutMs } : {}),
-    });
+    const response = await withRetries(
+      () =>
+        getStatusCdr({
+          endpoint,
+          auth: { username: `${this.issuer.ruc}${this.config.sol.user}`, password: this.config.sol.password },
+          query: { ruc: this.issuer.ruc, type, series, number: query.number },
+          ...this.restOptions(),
+        }),
+      isRetryableRead,
+      this.config.retry,
+    );
     const result: InvoiceStatusResult = { statusCode: response.statusCode, statusMessage: response.statusMessage };
     if (response.contentBase64) {
       const { cdr, cdrZip } = readCdrFromApplicationResponse(response.contentBase64);
@@ -301,8 +317,10 @@ export class SunatClient {
    *
    * - `accepted` / `accepted_with_observations`: ya puedes iniciar el traslado; guarda el CDR.
    * - `rejected`: en guías el rechazo no invalida el número; corrige y reenvía.
-   * - `pending`: SUNAT sigue procesando; consulta con `getDespatchStatus`.
-   * - Error de red (`SunatTransportError`): no se sabe si SUNAT la recibió; no cambies el número.
+   * - `pending`: SUNAT ya la recibió pero aún no se conoce el resultado (sigue procesando, o falló la consulta:
+   *   ver `statusError`). Consulta con `getDespatchStatus({ baseName, ticket })`; no la reenvíes.
+   * - Error lanzado (`SunatTransportError`, `SunatApiError`): ocurrió ANTES de obtener el ticket. Con un error de
+   *   red no se sabe si SUNAT la recibió; no cambies el número.
    */
   async sendDespatch(prepared: PreparedDespatch, options: DespatchSendOptions = {}): Promise<DespatchResult> {
     const { baseName } = prepared;
@@ -310,15 +328,27 @@ export class SunatClient {
     const gre = this.requireGre();
 
     const receipt = await this.withGreToken((token) =>
-      postDespatch({
-        token,
-        baseName,
-        zip,
-        ...(gre.apiEndpoint ? { apiEndpoint: gre.apiEndpoint } : {}),
-        ...this.restOptions(),
-      }),
+      withRetries(
+        () =>
+          postDespatch({
+            token,
+            baseName,
+            zip,
+            ...(gre.apiEndpoint ? { apiEndpoint: gre.apiEndpoint } : {}),
+            ...this.restOptions(),
+          }),
+        isSafeToResend,
+        this.config.retry,
+      ),
     );
-    const result = await waitForDespatch(() => this.fetchTicket(receipt.ticket), baseName, receipt.ticket, options);
+    // Desde aquí SUNAT ya tiene la guía: un fallo al consultar el resultado no debe perder el ticket.
+    let result: DespatchResult;
+    try {
+      result = await waitForDespatch(() => this.fetchTicket(receipt.ticket), baseName, receipt.ticket, options);
+    } catch (error) {
+      const statusError = error instanceof Error ? error : new Error(String(error));
+      return { status: 'pending', baseName, ticket: receipt.ticket, statusError };
+    }
     return this.attachPdf(result, options.downloadPdf);
   }
 
@@ -327,7 +357,9 @@ export class SunatClient {
    * Con `downloadPdf: true`, si quedó aceptada, baja también el PDF oficial (ver `sendDespatch`).
    */
   async getDespatchStatus(ref: { baseName: string; ticket: string }, options: Pick<DespatchSendOptions, 'downloadPdf'> = {}): Promise<DespatchResult> {
-    const result = await waitForDespatch(() => this.fetchTicket(ref.ticket), ref.baseName, ref.ticket, { maxWaitMs: 0 });
+    // Consulta única (sin sondeo), pero con reintentos: es una lectura sin efecto.
+    const fetchStatus = () => withRetries(() => this.fetchTicket(ref.ticket), isRetryableRead, this.config.retry);
+    const result = await waitForDespatch(fetchStatus, ref.baseName, ref.ticket, { maxWaitMs: 0 });
     return this.attachPdf(result, options.downloadPdf);
   }
 
@@ -398,18 +430,24 @@ export class SunatClient {
     }
   }
 
+  /** Pedir un token no crea nada en SUNAT: se reintenta ante fallos pasajeros (no ante credenciales incorrectas). */
   private newGreToken(): Promise<Token> {
     const gre = this.requireGre();
-    return requestToken(
-      {
-        clientId: gre.clientId,
-        clientSecret: gre.clientSecret,
-        username: `${this.issuer.ruc}${this.config.sol.user}`,
-        password: this.config.sol.password,
-        ...(gre.authEndpoint ? { authEndpoint: gre.authEndpoint } : {}),
-        ...this.restOptions(),
-      },
-      () => (this.config.now ?? (() => new Date()))().getTime(),
+    return withRetries(
+      () =>
+        requestToken(
+          {
+            clientId: gre.clientId,
+            clientSecret: gre.clientSecret,
+            username: `${this.issuer.ruc}${this.config.sol.user}`,
+            password: this.config.sol.password,
+            ...(gre.authEndpoint ? { authEndpoint: gre.authEndpoint } : {}),
+            ...this.restOptions(),
+          },
+          () => (this.config.now ?? (() => new Date()))().getTime(),
+        ),
+      isRetryableRead,
+      this.config.retry,
     );
   }
 }

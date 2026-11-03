@@ -91,6 +91,10 @@ export class SunatTransportError extends SunatError {
   /**
    * Conviene reintentar tras una pausa: caídas de red, 401/408/429 y 5xx sin SOAP.
    * (El proxy de SUNAT responde 401 cuando recibe varias peticiones muy seguidas.)
+   *
+   * `SunatClient` ya reintenta solo, con tope (ver `SunatClientConfig.retry`); si el error llega hasta ti es porque
+   * persistió o porque reintentar no era seguro. Un 401 que no desaparece puede deberse a un usuario o clave SOL
+   * incorrectos, y no se resuelve reintentando.
    */
   get retryable(): boolean {
     const s = this.httpStatus;

@@ -1,5 +1,5 @@
 import { isSunatHttpsUrl } from '../cdr';
-import { SunatApiError, SunatTransportError, SunatValidationError } from '../errors';
+import { SunatApiError, SunatError, SunatTransportError, SunatValidationError } from '../errors';
 
 export interface DespatchPdfOptions {
   fetch?: typeof fetch;
@@ -23,6 +23,30 @@ export interface DespatchPdf {
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+const MAX_REDIRECTS = 5;
+
+/**
+ * GET que sigue las redirecciones a mano y solo hacia URLs https de `*.sunat.gob.pe`: con el `redirect` por defecto,
+ * `fetch` seguiría una redirección a cualquier dominio y el filtro de la URL inicial no serviría de nada.
+ */
+async function fetchWithinSunat(doFetch: typeof fetch, url: string, timeoutMs: number): Promise<Response> {
+  const signal = AbortSignal.timeout(timeoutMs);
+  let current = url;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const response = await doFetch(current, { method: 'GET', headers: { Accept: 'application/pdf' }, redirect: 'manual', signal });
+    const location = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
+    if (!location) return response;
+    const next = new URL(location, current).toString();
+    if (!isSunatHttpsUrl(next)) {
+      throw new SunatValidationError('SUNAT redirigió la descarga del PDF fuera de sunat.gob.pe; no se siguió.', [
+        { path: 'qrUrl', message: `Redirección no permitida a ${new URL(next).host}` },
+      ]);
+    }
+    current = next;
+  }
+  throw new SunatApiError(`Demasiadas redirecciones al descargar el PDF (más de ${MAX_REDIRECTS}).`, 310);
+}
 
 /** Nombre de archivo de la cabecera `Content-Disposition`, solo si es seguro (letras, números, `.`, `_`, `-`). */
 function fileNameFrom(header: string | null): string | undefined {
@@ -55,8 +79,9 @@ export async function downloadDespatchPdf(qrUrl: string, options: DespatchPdfOpt
     }
     let response: Response;
     try {
-      response = await doFetch(qrUrl, { method: 'GET', headers: { Accept: 'application/pdf' }, signal: AbortSignal.timeout(options.timeoutMs ?? 10_000) });
+      response = await fetchWithinSunat(doFetch, qrUrl, options.timeoutMs ?? 10_000);
     } catch (cause) {
+      if (cause instanceof SunatError) throw cause; // redirección no permitida: reintentar no cambia nada
       lastError = new SunatTransportError(`No se pudo contactar a ${host} para descargar el PDF.`, { cause });
       continue;
     }

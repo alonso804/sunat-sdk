@@ -43,6 +43,7 @@ function makeClient(replies: Reply[], options: { now?: () => Date } = {}) {
     signingKey: key,
     fetch: mock.fn,
     now: options.now ?? (() => new Date('2026-10-31T15:30:00-05:00')),
+    retry: { delayMs: 0 },
   });
   return { client, ...mock };
 }
@@ -114,6 +115,78 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
 
     const later = await client.getDespatchStatus({ baseName: BASE, ticket: 'ticket-uuid-1' });
     expect(later.status).toBe('accepted');
+  });
+
+  describe('fallos al consultar el ticket (SUNAT ya recibió la guía)', () => {
+    /** Fetch que responde token y envío, y luego aplica `poll` a cada consulta del ticket. */
+    function pollingClient(poll: (n: number) => Response) {
+      let polls = 0;
+      const fn = vi.fn(async (url: string | URL | Request) => {
+        const u = String(url);
+        if (u.includes('/oauth2/token')) return json(TOKEN);
+        if (u.includes('/envios/')) return poll(++polls);
+        if (u.includes('/gem/comprobantes/')) return json(SENT);
+        throw new Error(`Llamada inesperada a ${u}`);
+      }) as unknown as typeof fetch;
+      const client = new SunatClient({
+        environment: 'production',
+        issuer: TEST_ISSUER,
+        sol: { user: 'USUARIO1', password: 'clave-sol' },
+        gre: { clientId: 'cid-123', clientSecret: 'secret-456' },
+        signingKey: key,
+        fetch: fn,
+        now: () => new Date('2026-10-31T15:30:00-05:00'),
+        retry: { delayMs: 0 },
+      });
+      return { client, polls: () => polls };
+    }
+
+    /** Reloj simulado: cada pausa avanza el tiempo, para que la espera se agote. */
+    function clockOptions(maxWaitMs: number) {
+      let clock = 0;
+      return { pollIntervalMs: 1000, maxWaitMs, sleep: async (ms: number) => void (clock += ms), now: () => clock };
+    }
+
+    it('un corte de red persistente devuelve pending con el ticket (no lanza)', async () => {
+      const { client, polls } = pollingClient(() => {
+        throw new TypeError('fetch failed');
+      });
+      const result = await client.sendDespatch(client.prepareDespatch(sampleDespatch()), clockOptions(2500));
+      expect(result).toMatchObject({ status: 'pending', baseName: BASE, ticket: 'ticket-uuid-1' });
+      expect(result.status === 'pending' && result.statusError).toBeInstanceOf(SunatTransportError);
+      expect(polls()).toBe(4); // t = 0, 1000, 2000, 3000: reintenta mientras dura la espera
+    });
+
+    it('un fallo pasajero (red o 5xx) se reintenta y la guía termina aceptada', async () => {
+      const { client } = pollingClient((n) => {
+        if (n === 1) throw new TypeError('fetch failed');
+        if (n === 2) return json({ status: 503, body: { cod: '503', msg: 'Service Unavailable' } });
+        return json(accepted());
+      });
+      const result = await client.sendDespatch(client.prepareDespatch(sampleDespatch()), clockOptions(60_000));
+      expect(result.status).toBe('accepted');
+    });
+
+    it('un error no pasajero (respuesta desconocida) devuelve pending con el ticket sin seguir consultando', async () => {
+      const { client, polls } = pollingClient(() => json({ body: { codRespuesta: '77' } }));
+      const result = await client.sendDespatch(client.prepareDespatch(sampleDespatch()), clockOptions(60_000));
+      expect(result).toMatchObject({ status: 'pending', ticket: 'ticket-uuid-1' });
+      expect(result.status === 'pending' && result.statusError).toBeInstanceOf(SunatApiError);
+      expect(polls()).toBe(1);
+    });
+
+    it('getDespatchStatus reintenta y, si el fallo persiste, lanza (quien llama ya tiene el ticket)', async () => {
+      const { client, polls } = pollingClient(() => {
+        throw new TypeError('fetch failed');
+      });
+      await expect(client.getDespatchStatus({ baseName: BASE, ticket: 'ticket-uuid-1' })).rejects.toBeInstanceOf(SunatTransportError);
+      expect(polls()).toBe(4); // 1 intento + 3 reintentos
+    });
+
+    it('getDespatchStatus supera un fallo pasajero', async () => {
+      const { client } = pollingClient((n) => (n === 1 ? json({ status: 502, body: { cod: '502', msg: 'Bad Gateway' } }) : json(accepted())));
+      expect((await client.getDespatchStatus({ baseName: BASE, ticket: 'ticket-uuid-1' })).status).toBe('accepted');
+    });
   });
 
   it('informa las observaciones del CDR', async () => {
@@ -192,10 +265,29 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
     expect((error as SunatApiError).message).toContain('Credenciales inválidas');
   });
 
-  it('un error 5xx es reintentable', async () => {
-    const { client } = makeClient([TOKEN, { status: 503, body: { cod: '503', msg: 'Service Unavailable' } }]);
+  it('un 503 al enviar se reintenta (SUNAT no procesó la petición) y la guía queda aceptada', async () => {
+    const UNAVAILABLE: Reply = { status: 503, body: { cod: '503', msg: 'Service Unavailable' } };
+    const { client, calls } = makeClient([TOKEN, UNAVAILABLE, SENT, accepted()]);
+    const result = await client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling);
+    expect(result.status).toBe('accepted');
+    expect(calls.filter((c) => c.init.method === 'POST' && c.url.includes('/gem/comprobantes/'))).toHaveLength(2);
+  });
+
+  it('un 503 persistente al enviar lanza SunatApiError reintentable, tras el tope de reintentos', async () => {
+    const UNAVAILABLE: Reply = { status: 503, body: { cod: '503', msg: 'Service Unavailable' } };
+    const { client, calls } = makeClient([TOKEN, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE]);
     const error = await client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SunatApiError);
+    expect((error as SunatApiError).status).toBe(503);
     expect((error as SunatApiError).retryable).toBe(true);
+    expect(calls).toHaveLength(5); // token + 1 envío + 3 reintentos
+  });
+
+  it('un 500 al enviar NO se reintenta: SUNAT pudo haber recibido la guía', async () => {
+    const { client, calls } = makeClient([TOKEN, { status: 500, body: { cod: '500', msg: 'Internal Server Error' } }]);
+    const error = await client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling).catch((e: unknown) => e);
+    expect((error as SunatApiError).status).toBe(500);
+    expect(calls).toHaveLength(2);
   });
 
   it('lanza SunatTransportError si falla la red', async () => {
@@ -209,8 +301,10 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
       gre: { clientId: 'a', clientSecret: 'b' },
       signingKey: key,
       fetch: failing,
+      retry: { delayMs: 0 },
     });
     await expect(client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling)).rejects.toBeInstanceOf(SunatTransportError);
+    expect(failing).toHaveBeenCalledTimes(4); // el token (sin efecto) se reintenta; nunca se llegó a enviar la guía
   });
 
   it('pide configurar las credenciales de API si faltan', async () => {

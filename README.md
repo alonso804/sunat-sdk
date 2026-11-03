@@ -3,21 +3,22 @@
 SDK en TypeScript para emitir comprobantes electrónicos **directo a SUNAT** (sin PSE ni OSE),
 pensado para usarse como paquete privado desde otras aplicaciones (desktop / móvil vía un backend Node).
 
-> **Estado: en construcción.** La **factura electrónica (01) al contado** funciona contra el ambiente **beta**.
-> La **guía de remisión del remitente (GRE 09)** está implementada y validada contra el esquema UBL 2.1,
-> pero **aún no se ha probado contra SUNAT** (no existe ambiente de pruebas para la GRE).
-> Nada se ha probado todavía en homologación ni producción.
+> **Estado: en construcción.** La **guía de remisión del remitente (GRE 09)** está **probada en producción**
+> (SUNAT no tiene ambiente de pruebas para la GRE) y validada contra el esquema UBL 2.1.
+> La **factura electrónica (01)**, al contado y al crédito, funciona contra el ambiente **beta**; aún no se ha probado
+> en homologación ni producción.
 
 | Capacidad | Estado |
 |---|---|
 | Factura 01, contado, PEN/USD, gravado/exonerado/inafecto | ✅ aceptada por SUNAT beta (40 de 40 en pruebas aleatorias) |
 | Firma XMLDSig, ZIP, SOAP `sendBill`, lectura del CDR | ✅ |
 | Resumen para confirmar antes de emitir (`prepareInvoice`, `prepareDespatch`) | ✅ |
-| GRE remitente: XML UBL 2.1 + firma + API REST (token OAuth, ticket, CDR) | ✅ implementada y validada con el XSD oficial · ⚠️ sin probar contra SUNAT |
+| GRE remitente: XML UBL 2.1 + firma + API REST (token OAuth, ticket, CDR) | ✅ probada en producción · validada con el XSD oficial |
 | Validación local contra los XSD de UBL 2.1 (`xmllint`) | ✅ facturas y 4 variantes de GRE |
-| Factura a crédito (cuotas), descuentos, anticipos, detracción | ⏳ |
+| Factura a crédito (cuotas), orden de compra y guías relacionadas | ✅ reglas verificadas contra SUNAT beta (ver más abajo) |
+| Descuentos, anticipos, detracción | ⏳ |
 | Notas de crédito / débito, boletas | ⏳ |
-| Consulta de estado / CDR de facturas (`getStatusCdr`) | ⏳ |
+| Consulta de estado / CDR de facturas (`getStatusCdr`, `getInvoiceStatus`) | ✅ implementada · solo existe en producción |
 | GRE transportista, motivos de importación/exportación, baja de GRE por API | ⏳ |
 | Lectura de comprobantes y guías emitidos (SIRE y otros) | ⏳ |
 | Generación de PDF / QR | ⏳ |
@@ -124,6 +125,11 @@ const result = await client.sendDespatch(prepared);
 // 'accepted' | 'accepted_with_observations' | 'rejected' | 'pending' (usa getDespatchStatus({ baseName, ticket }))
 ```
 
+Una vez que SUNAT entrega el ticket, `sendDespatch` ya no lanza errores: si la consulta del resultado falla (red, 5xx,
+CDR ilegible) devuelve `pending` con el `ticket` y el motivo en `statusError`. Guarda ese ticket y consulta luego con
+`getDespatchStatus`; **no reenvíes la guía**, porque SUNAT ya la recibió. Los fallos pasajeros se reintentan solos
+mientras dure la espera (`maxWaitMs`).
+
 #### QR y PDF oficial de la guía
 
 El CDR de una GRE aceptada trae `cdr.qrUrl`: una URL de SUNAT que es **exactamente el texto que debe codificar el QR**
@@ -169,6 +175,24 @@ comprobar en producción que el usuario SOL y sus permisos funcionan sin crear n
 (`scripts/invoice-prod-check.ts`). El manual del programador no lista la tabla de códigos de este método, así que el SDK
 no los interpreta: un comprobante inexistente puede llegar como código o como excepción (`SunatFaultError`).
 
+#### Reintentos automáticos
+
+`SunatClient` reintenta solo los fallos pasajeros: 3 reintentos por defecto, con pausas de 1 s, 2 s y 4 s.
+
+```ts
+new SunatClient({ /* … */ retry: { maxRetries: 3, delayMs: 1000 } }); // `{ maxRetries: 0 }` los desactiva
+```
+
+| Llamada | Se reintenta si… |
+|---|---|
+| `sendInvoice`, `sendDespatch` (envíos) | SUNAT **con seguridad no procesó** la petición: el proxy respondió `401` (peticiones muy seguidas), `429` o `503`, o la conexión no llegó a abrirse (DNS, conexión rechazada). |
+| Token de la API, `getInvoiceStatus`, `getDespatchStatus` (lecturas) | cualquier fallo pasajero: red, espera agotada, `408`, `429`, `5xx`. |
+
+Un envío **no** se reintenta si la petición pudo haber llegado (corte a mitad, espera agotada, `500`, `502`, `504`):
+SUNAT pudo haberla procesado, así que el error llega a tu código para que consultes el estado (`getInvoiceStatus`)
+antes de reenviar. Tampoco se reintentan las respuestas de SUNAT (rechazos, excepciones, credenciales incorrectas).
+Si un error llega hasta tu código es porque persistió tras los reintentos o porque reintentar no era seguro.
+
 El paquete corre en **Node** (firma, SOAP y REST necesitan secretos y `crypto`); la app móvil/desktop debe llamarlo
 a través de un backend, nunca firmar en el dispositivo.
 
@@ -184,8 +208,10 @@ Verificadas contra el manual del programador de SUNAT y contra el ambiente beta:
 - **Beta valida** estructura (XSD), firma y cálculos (`3291` si el IGV no cuadra), pero **no valida la clave SOL
   ni las fechas**. Un resultado "aceptada" en beta no garantiza aceptación en producción.
 - **No envíes peticiones muy seguidas o en paralelo**: el proxy de SUNAT responde `401` (`SunatTransportError.retryable`).
+  El cliente ya reintenta ese caso solo, con tope (ver [Reintentos automáticos](#reintentos-automáticos)).
 - La firma usa **RSA-SHA1/SHA1** por defecto (lo que documenta SUNAT). `sha256` está disponible
-  (`signatureAlgorithm: 'sha256'`); beta acepta ambos, pero hay que confirmar qué exige producción.
+  (`signatureAlgorithm: 'sha256'`); beta acepta ambos. En producción, las guías (GRE) se aceptan con SHA1, el valor
+  por defecto (`scripts/gre-prod-check.ts`); para facturas falta confirmarlo.
 - Precio: se calcula valor unitario = precio con IGV / 1.18 (10 decimales), valor de línea = cantidad × valor unitario
   (2 decimales) e IGV por línea. Con este criterio, SUNAT beta aceptó 40 de 40 facturas aleatorias.
 

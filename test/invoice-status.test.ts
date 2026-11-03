@@ -65,6 +65,7 @@ describe('SunatClient.getInvoiceStatus', () => {
       sol: { user: 'USUARIO1', password: 'clave-sol' },
       signingKey: key,
       fetch: fetchMock,
+      retry: { delayMs: 0 },
     });
   const respond = (body: string, status = 200) => vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => new Response(body, { status }));
 
@@ -123,10 +124,22 @@ describe('SunatClient.getInvoiceStatus', () => {
     expect(error).toBeInstanceOf(SunatError);
   });
 
-  it('un fallo de red es SunatTransportError', async () => {
+  it('un fallo de red persistente es SunatTransportError, tras reintentar (es solo lectura)', async () => {
     const mock = vi.fn(async () => {
       throw new TypeError('fetch failed');
     });
     await expect(makeClient(mock as unknown as typeof fetch).getInvoiceStatus({ series: 'F001', number: 1 })).rejects.toBeInstanceOf(SunatTransportError);
+    expect(mock).toHaveBeenCalledTimes(4); // 1 intento + 3 reintentos
+  });
+
+  it('reintenta un fallo pasajero y devuelve el estado', async () => {
+    const mock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(new Response('<html>502 Bad Gateway</html>', { status: 502 }))
+      .mockResolvedValueOnce(new Response(statusResponse('0011', 'El comprobante de pago electronico no existe.'), { status: 200 }));
+    const result = await makeClient(mock as unknown as typeof fetch).getInvoiceStatus({ series: 'F001', number: 1 });
+    expect(result.statusCode).toBe('0011');
+    expect(mock).toHaveBeenCalledTimes(3);
   });
 });

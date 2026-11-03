@@ -70,6 +70,25 @@ describe('downloadDespatchPdf', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('sigue una redirección a otro dominio de sunat.gob.pe', async () => {
+    const NEXT = 'https://api-cpe.sunat.gob.pe/v1/descarga/guia.pdf';
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 302, headers: { Location: NEXT } }))
+      .mockResolvedValueOnce(pdfResponse());
+    const result = await downloadDespatchPdf(QR_URL, { fetch: fetchMock as unknown as typeof fetch });
+    expect(result.pdf.length).toBeGreaterThan(5);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual([QR_URL, NEXT]);
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ redirect: 'manual' });
+  });
+
+  it('no sigue una redirección fuera de sunat.gob.pe ni la reintenta', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 302, headers: { Location: 'https://malo.example.com/x.pdf' } }));
+    const error = await downloadDespatchPdf(QR_URL, { fetch: fetchMock as unknown as typeof fetch, retryDelayMs: 1 }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SunatValidationError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('reintenta ante errores 5xx y luego descarga', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response('', { status: 503 })).mockResolvedValueOnce(pdfResponse());
     const result = await downloadDespatchPdf(QR_URL, { fetch: fetchMock as unknown as typeof fetch, retryDelayMs: 1 });

@@ -84,7 +84,7 @@ function supplierParty(issuer: Issuer): string {
     `<cbc:CountrySubentity>${esc(a.department)}</cbc:CountrySubentity>` +
     `<cbc:District>${esc(a.district)}</cbc:District>` +
     `<cac:AddressLine><cbc:Line>${esc(singleLine(a.street))}</cbc:Line></cac:AddressLine>` +
-    `<cac:Country><cbc:IdentificationCode>${a.countryCode}</cbc:IdentificationCode></cac:Country>` +
+    `<cac:Country><cbc:IdentificationCode>${esc(a.countryCode)}</cbc:IdentificationCode></cac:Country>` +
     '</cac:RegistrationAddress>' +
     '</cac:PartyLegalEntity>' +
     contact +

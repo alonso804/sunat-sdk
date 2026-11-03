@@ -48,7 +48,8 @@ function decodeNumericEntities(text: string): string {
 function extractFaultCode(faultcode: string, faultstring: string): string {
   const fromCode = /(\d{3,4})\s*$/.exec(faultcode)?.[1];
   if (fromCode) return fromCode;
-  const fromString = /\b(\d{4})\b/.exec(faultstring)?.[1];
+  // Solo al inicio ("3030 - ..."): un número en medio del texto (p. ej. "F001-1234") no es el código.
+  const fromString = /^\s*(\d{4})\b/.exec(faultstring)?.[1];
   return fromString ?? (faultcode || 'UNKNOWN');
 }
 

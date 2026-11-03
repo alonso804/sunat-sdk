@@ -1,6 +1,6 @@
 import { readCdrFromApplicationResponse, type Cdr } from '../cdr';
 import { RELATED_DOCUMENT_TYPES, SELF_RECIPIENT_REASONS, TRANSFER_REASONS, type TransferReason } from '../catalogs';
-import { SunatApiError, SunatValidationError } from '../errors';
+import { SunatApiError, SunatTransportError, SunatValidationError } from '../errors';
 import type { Issuer } from '../invoice/schema';
 import { dec, fmtFixed, fmtUpTo } from '../money';
 import type { SigningKey } from '../signing/certificate';
@@ -70,10 +70,16 @@ export type DespatchResult =
       cdr?: Cdr;
     }
   | {
-      /** SUNAT seguía procesando al agotarse la espera: consulta de nuevo con `getDespatchStatus`. */
+      /**
+       * SUNAT ya recibió la guía (hay ticket), pero aún no se conoce el resultado: seguía procesando al agotarse la
+       * espera o falló la consulta (ver `statusError`). Consulta de nuevo con `getDespatchStatus({ baseName, ticket })`;
+       * NO la reenvíes con otro número.
+       */
       status: 'pending';
       baseName: string;
       ticket: string;
+      /** Solo si la consulta del ticket falló (red, error de SUNAT, CDR ilegible). La guía igual quedó recibida. */
+      statusError?: Error;
     };
 
 export interface DespatchSendOptions {
@@ -217,7 +223,15 @@ export function mapTicketStatus(baseName: string, ticket: string, status: Ticket
   }
 }
 
-/** Consulta el ticket hasta que SUNAT termine de procesar o se agote la espera. */
+/** Fallo pasajero al consultar el ticket (red, 408/429/5xx): no decide nada, conviene volver a consultar. */
+function isTransient(error: unknown): boolean {
+  return error instanceof SunatTransportError || (error instanceof SunatApiError && error.retryable);
+}
+
+/**
+ * Consulta el ticket hasta que SUNAT termine de procesar o se agote la espera.
+ * Un fallo pasajero de la consulta se reintenta mientras quede tiempo; si persiste al vencer la espera, se lanza.
+ */
 export async function waitForDespatch(
   fetchStatus: () => Promise<TicketStatus>,
   baseName: string,
@@ -231,8 +245,12 @@ export async function waitForDespatch(
   const deadline = now() + maxWait;
 
   for (;;) {
-    const result = mapTicketStatus(baseName, ticket, await fetchStatus());
-    if (result.status !== 'pending' || now() >= deadline) return result;
+    try {
+      const result = mapTicketStatus(baseName, ticket, await fetchStatus());
+      if (result.status !== 'pending' || now() >= deadline) return result;
+    } catch (error) {
+      if (!isTransient(error) || now() >= deadline) throw error;
+    }
     await sleep(interval);
   }
 }

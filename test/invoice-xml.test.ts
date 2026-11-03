@@ -32,6 +32,19 @@ describe('prepareInvoice', () => {
     expect(prepared.digestValue).toBeTruthy();
   });
 
+  it('normaliza el código de país del emisor y rechaza uno inválido', () => {
+    const withCountry = (countryCode: string) =>
+      new SunatClient({
+        environment: 'beta',
+        issuer: { ...TEST_ISSUER, address: { ...TEST_ISSUER.address, countryCode } },
+        sol: { user: 'MODDATOS', password: 'MODDATOS' },
+        signingKey: key,
+      });
+    expect(withCountry('pe').issuer.address.countryCode).toBe('PE');
+    expect(() => withCountry('<a')).toThrow(SunatValidationError);
+    expect(() => withCountry('PER')).toThrow(SunatValidationError);
+  });
+
   it('coloca la firma dentro de ext:ExtensionContent e incluye el certificado', () => {
     const { signedXml } = makeClient().prepareInvoice(sampleInvoice());
     expect(signedXml).toMatch(/<ext:ExtensionContent><ds:Signature[^>]*Id="SignatureSP"/);
