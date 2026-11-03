@@ -3,7 +3,7 @@ import { SunatError } from './errors';
 import { unzipFiles } from './zip';
 
 /** Constancia de Recepción (CDR) que SUNAT devuelve al procesar un comprobante. */
-export interface Cdr {
+export type Cdr = {
   /** Serie-correlativo del comprobante, por ejemplo "F001-1". */
   referenceId: string;
   /** "0" = aceptado. Cualquier otro valor indica rechazo. */
@@ -18,7 +18,7 @@ export interface Cdr {
    * proporcionada por la SUNAT en el CDR"). Al abrirla, SUNAT descarga el PDF oficial de la guía.
    */
   qrUrl?: string;
-}
+};
 
 /** Acepta solo URLs `https` de un dominio `*.sunat.gob.pe`: el SDK las descarga y no debe seguir otras. */
 export function isSunatHttpsUrl(value: string): boolean {

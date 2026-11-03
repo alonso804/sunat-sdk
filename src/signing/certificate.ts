@@ -2,12 +2,12 @@ import forge from 'node-forge';
 import { SunatError } from '../errors';
 
 /** Par llave privada + certificado, ambos en PEM, listos para firmar. */
-export interface SigningKey {
+export type SigningKey = {
   privateKeyPem: string;
   certificatePem: string;
-}
+};
 
-export interface CertificateInfo {
+export type CertificateInfo = {
   subject: Record<string, string>;
   issuer: Record<string, string>;
   serialNumber: string;
@@ -19,7 +19,7 @@ export interface CertificateInfo {
   signatureAlgorithm: string;
   /** Huella SHA-256 del certificado, en hexadecimal con dos puntos. */
   fingerprintSha256: string;
-}
+};
 
 // node-forge tipa los OID como opcionales; son constantes del estándar PKCS#12.
 const OID = {
@@ -104,14 +104,14 @@ export function describeCertificate(certificatePem: string): CertificateInfo {
   };
 }
 
-export interface CertificateCheck {
+export type CertificateCheck = {
   /** `false` si hay un problema que impide usar el certificado (vencido o aún no vigente). */
   ok: boolean;
   problems: string[];
   warnings: string[];
   /** Días que faltan para el vencimiento (negativo si ya venció). */
   daysRemaining: number;
-}
+};
 
 const DAY_MS = 86_400_000;
 const isoDate = (date: Date): string => date.toISOString().slice(0, 10);

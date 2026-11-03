@@ -1,6 +1,6 @@
 export type Environment = 'beta' | 'homologation' | 'production';
 
-export interface EnvironmentEndpoints {
+export type EnvironmentEndpoints = {
   /** SOAP billService: sendBill / getStatus / sendSummary (facturas, boletas, notas). */
   billService: string;
   /**
@@ -8,7 +8,7 @@ export interface EnvironmentEndpoints {
    * solo lo publica para producción; en beta no hay servicio de consulta.
    */
   consultService?: string;
-}
+};
 
 /**
  * Endpoints de SUNAT para facturas, boletas y notas (SOAP).

@@ -4,11 +4,11 @@ export const IGV_RATE = '0.18';
 /** Catálogo 07 de SUNAT: tipo de afectación del IGV. Por ahora solo se soportan los de uso común. */
 export type IgvAffectation = '10' | '20' | '30';
 
-export interface TaxScheme {
+export type TaxScheme = {
   id: string;
   name: string;
   code: string;
-}
+};
 
 export const AFFECTATIONS: Record<IgvAffectation, { scheme: TaxScheme; taxed: boolean }> = {
   /** Gravado - operación onerosa */

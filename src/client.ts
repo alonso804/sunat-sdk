@@ -26,15 +26,15 @@ import { limaDateTime } from './xml';
 import { zipSingleFile } from './zip';
 
 /** Credenciales de la API REST de SUNAT (guías de remisión), generadas en SOL → Credenciales de API SUNAT. */
-export interface GreCredentials {
+export type GreCredentials = {
   clientId: string;
   clientSecret: string;
   /** Solo para pruebas o proxies. */
   apiEndpoint?: string;
   authEndpoint?: string;
-}
+};
 
-export interface SunatClientConfig {
+export type SunatClientConfig = {
   environment: Environment;
   /** Datos del contribuyente que emite. */
   issuer: IssuerInput;
@@ -61,10 +61,10 @@ export interface SunatClientConfig {
   retry?: RetryOptions;
   /** Reloj inyectable (pruebas). */
   now?: () => Date;
-}
+};
 
 /** Resumen legible para mostrar al usuario y pedir confirmación antes de emitir. */
-export interface InvoiceSummary {
+export type InvoiceSummary = {
   series: string;
   number: number;
   currency: 'PEN' | 'USD';
@@ -82,10 +82,10 @@ export interface InvoiceSummary {
     | { type: 'credit'; netPending: string; installments: Array<{ number: number; dueDate: string; amount: string }> };
   purchaseOrder?: string;
   relatedDespatches: Array<{ type: '09' | '31'; number: string }>;
-}
+};
 
 /** Factura validada, calculada y firmada, lista para enviarse. No tiene efecto hasta que se envía. */
-export interface PreparedInvoice {
+export type PreparedInvoice = {
   /** `<RUC>-01-<SERIE>-<CORRELATIVO>`: nombre de los archivos XML y ZIP. */
   baseName: string;
   signedXml: string;
@@ -93,19 +93,19 @@ export interface PreparedInvoice {
   digestValue: string | undefined;
   issuedAt: Date;
   summary: InvoiceSummary;
-}
+};
 
 /** Comprobante que se consulta con `getInvoiceStatus` (siempre del emisor configurado en el cliente). */
-export interface InvoiceStatusQuery {
+export type InvoiceStatusQuery = {
   /** Serie de 4 caracteres, por ejemplo "F001". */
   series: string;
   /** Correlativo, entero positivo. */
   number: number;
   /** 01 = factura (por defecto), 07 = nota de crédito, 08 = nota de débito. */
   type?: '01' | '07' | '08';
-}
+};
 
-export interface InvoiceStatusResult {
+export type InvoiceStatusResult = {
   /** Código que devuelve SUNAT (p. ej. "0001"). El manual no publica la tabla completa para `getStatusCdr`: se devuelve tal cual. */
   statusCode: string;
   /** Mensaje de SUNAT que acompaña al código. */
@@ -114,7 +114,7 @@ export interface InvoiceStatusResult {
   cdr?: Cdr;
   /** CDR tal como lo devolvió SUNAT (ZIP), solo si lo adjuntó. */
   cdrZip?: Uint8Array;
-}
+};
 
 export type SendInvoiceResult =
   | {

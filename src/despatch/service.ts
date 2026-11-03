@@ -13,7 +13,7 @@ import { DespatchSchema, type DespatchInput } from './schema';
 import { buildDespatchXml, despatchBaseName, type ResolvedParty } from './xml';
 
 /** Resumen legible para mostrar al usuario y pedir confirmación antes de emitir. */
-export interface DespatchSummary {
+export type DespatchSummary = {
   series: string;
   number: number;
   /** Hora de Lima, `YYYY-MM-DD HH:mm:ss`. */
@@ -32,10 +32,10 @@ export interface DespatchSummary {
   vehiclePlate: string | undefined;
   drivers: Array<{ name: string; docNumber: string; license: string }>;
   relatedDocuments: Array<{ type: string; label: string; number: string }>;
-}
+};
 
 /** GRE validada y firmada, lista para enviarse. No tiene efecto hasta que se envía. */
-export interface PreparedDespatch {
+export type PreparedDespatch = {
   /** `<RUC>-09-<SERIE>-<CORRELATIVO>`: nombre de los archivos XML y ZIP. */
   baseName: string;
   signedXml: string;
@@ -45,7 +45,7 @@ export interface PreparedDespatch {
   summary: DespatchSummary;
   /** Avisos para el usuario antes de confirmar el envío. */
   warnings: string[];
-}
+};
 
 export type DespatchResult =
   | {
@@ -82,7 +82,7 @@ export type DespatchResult =
       statusError?: Error;
     };
 
-export interface DespatchSendOptions {
+export type DespatchSendOptions = {
   /** Pausa entre consultas del ticket. Por defecto 2000 ms. */
   pollIntervalMs?: number;
   /** Espera máxima por el resultado. Por defecto 60 000 ms. */
@@ -95,7 +95,7 @@ export interface DespatchSendOptions {
   /** Inyectables para pruebas. */
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
-}
+};
 
 export function prepareDespatch(params: {
   issuer: Issuer;

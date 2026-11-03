@@ -5,11 +5,11 @@ import { escapeXml } from '../xml';
 const WSSE_NS = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd';
 const PASSWORD_TEXT = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText';
 
-export interface SoapAuth {
+export type SoapAuth = {
   /** `<RUC><usuario SOL>`, por ejemplo "20123456789MODDATOS". */
   username: string;
   password: string;
-}
+};
 
 const parser = new XMLParser({ removeNSPrefix: true, parseTagValue: false });
 
@@ -83,14 +83,14 @@ export function parseSendBillResponse(httpStatus: number, body: string): string 
   throw new SunatTransportError(`Respuesta inesperada de SUNAT (HTTP ${httpStatus}).`, { httpStatus });
 }
 
-export interface SendBillOptions {
+export type SendBillOptions = {
   endpoint: string;
   auth: SoapAuth;
   fileName: string;
   zipBase64: string;
   fetch?: typeof fetch;
   timeoutMs?: number;
-}
+};
 
 export async function sendBill(options: SendBillOptions): Promise<string> {
   const doFetch = options.fetch ?? fetch;
@@ -115,14 +115,14 @@ export async function sendBill(options: SendBillOptions): Promise<string> {
 // getStatusCdr (servicio de consulta de SUNAT): estado y CDR de una factura o nota ya informada
 // ---------------------------------------------------------------------------------------------
 
-export interface StatusCdrQuery {
+export type StatusCdrQuery = {
   /** RUC del emisor del comprobante. */
   ruc: string;
   /** 01 = factura, 07 = nota de crédito, 08 = nota de débito. */
   type: '01' | '07' | '08';
   series: string;
   number: number;
-}
+};
 
 export function buildGetStatusCdrEnvelope(auth: SoapAuth, query: StatusCdrQuery): string {
   return soapEnvelope(
@@ -136,13 +136,13 @@ export function buildGetStatusCdrEnvelope(auth: SoapAuth, query: StatusCdrQuery)
   );
 }
 
-export interface StatusCdrResponse {
+export type StatusCdrResponse = {
   /** Código tal como lo devuelve SUNAT (el manual no publica la tabla completa para `getStatusCdr`). */
   statusCode: string;
   statusMessage: string;
   /** CDR (ZIP en base64) cuando SUNAT lo adjunta. */
   contentBase64: string | undefined;
-}
+};
 
 /** Interpreta la respuesta de `getStatusCdr`. Un Fault de SUNAT se lanza como `SunatFaultError`. */
 export function parseGetStatusCdrResponse(httpStatus: number, body: string): StatusCdrResponse {
@@ -159,13 +159,13 @@ export function parseGetStatusCdrResponse(httpStatus: number, body: string): Sta
   throw new SunatTransportError(`Respuesta inesperada de SUNAT (HTTP ${httpStatus}).`, { httpStatus });
 }
 
-export interface GetStatusCdrOptions {
+export type GetStatusCdrOptions = {
   endpoint: string;
   auth: SoapAuth;
   query: StatusCdrQuery;
   fetch?: typeof fetch;
   timeoutMs?: number;
-}
+};
 
 export async function getStatusCdr(options: GetStatusCdrOptions): Promise<StatusCdrResponse> {
   const doFetch = options.fetch ?? fetch;

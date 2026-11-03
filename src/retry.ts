@@ -1,12 +1,12 @@
 import { SunatApiError, SunatTransportError } from './errors';
 
 /** Reintentos automáticos ante fallos pasajeros de SUNAT (ver `SunatClientConfig.retry`). */
-export interface RetryOptions {
+export type RetryOptions = {
   /** Reintentos después del primer intento. Por defecto 3; `0` los desactiva. */
   maxRetries?: number;
   /** Pausa antes del primer reintento; se duplica en cada uno (1 s, 2 s, 4 s…). Por defecto 1000 ms. */
   delayMs?: number;
-}
+};
 
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_DELAY_MS = 1_000;

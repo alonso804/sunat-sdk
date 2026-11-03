@@ -2,7 +2,7 @@ import { AFFECTATIONS, IGV_RATE, type IgvAffectation } from '../catalogs';
 import { D, dec, round, type Dec } from '../money';
 import type { Invoice } from './schema';
 
-export interface CalculatedLine {
+export type CalculatedLine = {
   /** Número de línea, desde 1. */
   index: number;
   description: string;
@@ -20,9 +20,9 @@ export interface CalculatedLine {
   lineValue: Dec;
   /** IGV de la línea, 2 decimales. */
   igv: Dec;
-}
+};
 
-export interface CalculatedTotals {
+export type CalculatedTotals = {
   taxedBase: Dec;
   exoneratedBase: Dec;
   unaffectedBase: Dec;
@@ -36,12 +36,12 @@ export interface CalculatedTotals {
   hasTaxed: boolean;
   hasExonerated: boolean;
   hasUnaffected: boolean;
-}
+};
 
-export interface CalculatedInvoice {
+export type CalculatedInvoice = {
   lines: CalculatedLine[];
   totals: CalculatedTotals;
-}
+};
 
 export function calculateInvoice(invoice: Invoice): CalculatedInvoice {
   const igvRate = dec(IGV_RATE);

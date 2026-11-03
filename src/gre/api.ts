@@ -13,12 +13,12 @@ export const GRE_ENDPOINTS = {
 /** Alcance (scope) que se pide al generar el token. */
 export const GRE_SCOPE = 'https://api-cpe.sunat.gob.pe';
 
-export interface RestOptions {
+export type RestOptions = {
   fetch?: typeof fetch;
   timeoutMs?: number;
-}
+};
 
-export interface TokenRequest extends RestOptions {
+export type TokenRequest = RestOptions & {
   authEndpoint?: string;
   /** Id generado en SOL → Credenciales de API SUNAT. */
   clientId: string;
@@ -28,13 +28,13 @@ export interface TokenRequest extends RestOptions {
   username: string;
   /** Clave SOL del usuario. */
   password: string;
-}
+};
 
-export interface Token {
+export type Token = {
   accessToken: string;
   /** Instante de expiración (ms desde epoch). SUNAT lo entrega en segundos; hoy dura 1 hora. */
   expiresAt: number;
-}
+};
 
 async function readBody(response: Response): Promise<{ text: string; json: Record<string, any> | undefined }> {
   const text = await response.text();
@@ -103,21 +103,21 @@ export async function requestToken(request_: TokenRequest, now: () => number = D
   return { accessToken, expiresAt: now() + (Number.isFinite(expiresInSeconds) ? expiresInSeconds : 3600) * 1000 };
 }
 
-export interface SendOptions extends RestOptions {
+export type SendOptions = RestOptions & {
   apiEndpoint?: string;
   token: string;
   /** Nombre base sin extensión: `<RUC>-09-<SERIE>-<CORRELATIVO>`. */
   baseName: string;
   /** ZIP con el XML firmado dentro. */
   zip: Uint8Array;
-}
+};
 
-export interface SendReceipt {
+export type SendReceipt = {
   /** Identificador (UUID) con el que se consulta el resultado. */
   ticket: string;
   /** Fecha de recepción informada por SUNAT. */
   receivedAt: string | undefined;
-}
+};
 
 /** Envía el comprobante. SUNAT lo procesa de forma asíncrona y devuelve un ticket. */
 export async function postDespatch(options: SendOptions): Promise<SendReceipt> {
@@ -145,20 +145,20 @@ export async function postDespatch(options: SendOptions): Promise<SendReceipt> {
   return { ticket, receivedAt: typeof json.fecRecepcion === 'string' ? json.fecRecepcion : undefined };
 }
 
-export interface TicketStatus {
+export type TicketStatus = {
   /** "0" = procesado correctamente, "98" = en proceso (consultar de nuevo), "99" = procesado con errores. */
   code: string;
   error: { number: string; description: string } | undefined;
   /** CDR (ZIP en base64), cuando SUNAT lo genera. */
   cdrBase64: string | undefined;
   cdrGenerated: boolean;
-}
+};
 
-export interface StatusOptions extends RestOptions {
+export type StatusOptions = RestOptions & {
   apiEndpoint?: string;
   token: string;
   ticket: string;
-}
+};
 
 /** Consulta el resultado de un envío por su ticket. */
 export async function getTicketStatus(options: StatusOptions): Promise<TicketStatus> {

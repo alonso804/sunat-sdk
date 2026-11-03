@@ -22,11 +22,11 @@ const NAMESPACES = [
 
 const SCHEME_ATTRS = 'schemeName="Documento de Identidad" schemeAgencyName="PE:SUNAT" schemeURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo06"';
 
-export interface ResolvedParty {
+export type ResolvedParty = {
   docType: IdentityType;
   docNumber: string;
   name: string;
-}
+};
 
 /** Nombre base de los archivos: `<RUC>-09-<SERIE>-<CORRELATIVO>`. */
 export function despatchBaseName(issuerRuc: string, despatch: Pick<Despatch, 'series' | 'number'>): string {

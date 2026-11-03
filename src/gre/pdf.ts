@@ -1,7 +1,7 @@
 import { isSunatHttpsUrl } from '../cdr';
 import { SunatApiError, SunatError, SunatTransportError, SunatValidationError } from '../errors';
 
-export interface DespatchPdfOptions {
+export type DespatchPdfOptions = {
   fetch?: typeof fetch;
   /**
    * Tiempo máximo por intento. Por defecto 10 s. Este servicio de SUNAT responde en menos de 1 s o se queda
@@ -13,14 +13,14 @@ export interface DespatchPdfOptions {
   retries?: number;
   /** Pausa entre reintentos. Por defecto 0,5 s, y se duplica en cada uno. */
   retryDelayMs?: number;
-}
+};
 
-export interface DespatchPdf {
+export type DespatchPdf = {
   /** Contenido del PDF oficial que genera SUNAT. */
   pdf: Uint8Array;
   /** Nombre sugerido por SUNAT, p. ej. `20000000001-09-T001-15-PDF.pdf`, ya depurado. */
   fileName: string | undefined;
-}
+};
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
