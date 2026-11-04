@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SunatClient } from '../src';
 import { verifyUblSignature } from '../src/signing/xmldsig';
 import { unzipFiles, zipSingleFile } from '../src/zip';
-import { TEST_ISSUER, hasXmllint, sampleDespatch, sampleInvoice, testCertificate, validateAgainstUbl } from './helpers';
+import { hasXmllint, sampleDespatch, sampleInvoice, TEST_ISSUER, testCertificate, validateAgainstUbl } from './helpers';
 
 const { key } = testCertificate();
 const client = new SunatClient({
@@ -24,7 +24,10 @@ function roundTrip(name: string, xml: string): string {
 describe('tildes y caracteres especiales (UTF-8)', () => {
   it('la factura conserva los caracteres y la firma tras comprimir y descomprimir', () => {
     const prepared = client.prepareInvoice(
-      sampleInvoice({ customer: { ruc: '20131312955', name: 'Peñasco Ñandú S.A.C.' }, items: [{ description: ACCENTS, quantity: 1, unitPrice: 11.8 }] }),
+      sampleInvoice({
+        customer: { ruc: '20131312955', name: 'Peñasco Ñandú S.A.C.' },
+        items: [{ description: ACCENTS, quantity: 1, unitPrice: 11.8 }],
+      }),
     );
     const received = roundTrip(prepared.baseName, prepared.signedXml);
     expect(received).toBe(prepared.signedXml);
@@ -46,7 +49,18 @@ describe('tildes y caracteres especiales (UTF-8)', () => {
   });
 
   it.skipIf(!hasXmllint)('el XML con tildes es válido contra el esquema UBL', () => {
-    expect(validateAgainstUbl(client.prepareDespatch(sampleDespatch({ items: [{ description: ACCENTS, quantity: 1 }] })).signedXml, 'DespatchAdvice').errors).toBe('- validates');
-    expect(validateAgainstUbl(client.prepareInvoice(sampleInvoice({ items: [{ description: ACCENTS, quantity: 1, unitPrice: 5 }] })).signedXml, 'Invoice').errors).toBe('- validates');
+    expect(
+      validateAgainstUbl(
+        client.prepareDespatch(sampleDespatch({ items: [{ description: ACCENTS, quantity: 1 }] })).signedXml,
+        'DespatchAdvice',
+      ).errors,
+    ).toBe('- validates');
+    expect(
+      validateAgainstUbl(
+        client.prepareInvoice(sampleInvoice({ items: [{ description: ACCENTS, quantity: 1, unitPrice: 5 }] }))
+          .signedXml,
+        'Invoice',
+      ).errors,
+    ).toBe('- validates');
   });
 });

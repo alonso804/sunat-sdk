@@ -64,7 +64,11 @@ function toApiError(status: number, body: { text: string; json: Untyped | undefi
   return new SunatApiError(`${message} (HTTP ${status})`, status, code, details, body.text.slice(0, 1000));
 }
 
-async function request(url: string, init: RequestInit, options: RestOptions): Promise<{ status: number; json: Untyped }> {
+async function request(
+  url: string,
+  init: RequestInit,
+  options: RestOptions,
+): Promise<{ status: number; json: Untyped }> {
   const doFetch = options.fetch ?? fetch;
   let response: Response;
   try {
@@ -75,7 +79,13 @@ async function request(url: string, init: RequestInit, options: RestOptions): Pr
   const body = await readBody(response);
   if (!response.ok) throw toApiError(response.status, body);
   if (!body.json) {
-    throw new SunatApiError(`Respuesta inesperada de SUNAT (HTTP ${response.status}).`, response.status, undefined, [], body.text.slice(0, 1000));
+    throw new SunatApiError(
+      `Respuesta inesperada de SUNAT (HTTP ${response.status}).`,
+      response.status,
+      undefined,
+      [],
+      body.text.slice(0, 1000),
+    );
   }
   return { status: response.status, json: body.json };
 }
@@ -98,7 +108,13 @@ export async function requestToken(request_: TokenRequest, now: () => number = D
   );
   const accessToken = json.access_token;
   if (typeof accessToken !== 'string' || !accessToken) {
-    throw new SunatApiError('SUNAT no devolvió un token de acceso.', 200, undefined, [], JSON.stringify(json).slice(0, 500));
+    throw new SunatApiError(
+      'SUNAT no devolvió un token de acceso.',
+      200,
+      undefined,
+      [],
+      JSON.stringify(json).slice(0, 500),
+    );
   }
   const expiresInSeconds = Number(json.expires_in);
   return { accessToken, expiresAt: now() + (Number.isFinite(expiresInSeconds) ? expiresInSeconds : 3600) * 1000 };
@@ -141,7 +157,13 @@ export async function postDespatch(options: SendOptions): Promise<SendReceipt> {
   );
   const ticket = json.numTicket;
   if (typeof ticket !== 'string' || !ticket) {
-    throw new SunatApiError('SUNAT no devolvió el número de ticket.', 200, undefined, [], JSON.stringify(json).slice(0, 500));
+    throw new SunatApiError(
+      'SUNAT no devolvió el número de ticket.',
+      200,
+      undefined,
+      [],
+      JSON.stringify(json).slice(0, 500),
+    );
   }
   return { ticket, receivedAt: typeof json.fecRecepcion === 'string' ? json.fecRecepcion : undefined };
 }

@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import {
   IDENTITY_TYPES,
+  type IdentityType,
   RELATED_DOCUMENT_TYPES,
+  type RelatedDocumentType,
   SELF_RECIPIENT_REASONS,
   TRANSFER_REASONS,
-  TransportMode,
-  type IdentityType,
-  type RelatedDocumentType,
   type TransferReason,
+  TransportMode,
 } from '../catalogs';
 import { PositiveNumeric } from '../common-schema';
 import { isValidRuc } from '../ruc';
@@ -133,7 +133,8 @@ const despatchRelatedDocumentShape = {
   issuerRuc: z.string().refine(isValidRuc, 'RUC del emisor inválido').optional(),
 };
 /** Documento relacionado con el traslado (p. ej. la factura que sustenta la venta). */
-export const DespatchRelatedDocumentSchema: z.ZodObject<typeof despatchRelatedDocumentShape> = z.object(despatchRelatedDocumentShape);
+export const DespatchRelatedDocumentSchema: z.ZodObject<typeof despatchRelatedDocumentShape> =
+  z.object(despatchRelatedDocumentShape);
 
 const grossWeightShape = {
   /** Peso bruto, en la unidad indicada. */
@@ -229,9 +230,13 @@ export const DespatchSchema: z.ZodObject<typeof despatchShape> = z.object(despat
     issue(['recipient'], 'Debes indicar el destinatario');
   }
   if (d.reason === '04') {
-    if (!d.origin.establishmentCode) issue(['origin', 'establishmentCode'], 'El motivo "04" exige el código de establecimiento del punto de partida');
+    if (!d.origin.establishmentCode)
+      issue(['origin', 'establishmentCode'], 'El motivo "04" exige el código de establecimiento del punto de partida');
     if (!d.destination.establishmentCode) {
-      issue(['destination', 'establishmentCode'], 'El motivo "04" exige el código de establecimiento del punto de llegada');
+      issue(
+        ['destination', 'establishmentCode'],
+        'El motivo "04" exige el código de establecimiento del punto de llegada',
+      );
     }
   }
 
@@ -240,13 +245,20 @@ export const DespatchSchema: z.ZodObject<typeof despatchShape> = z.object(despat
       issue(['carrier'], 'En transporte público debes indicar el RUC y nombre del transportista');
     }
     if (d.indicators.carrierVehicleAndDrivers) {
-      if (!d.vehicle) issue(['vehicle'], 'Con el indicador de vehículo y conductores del transportista debes indicar la placa');
-      if (d.drivers.length === 0) issue(['drivers'], 'Con el indicador de vehículo y conductores del transportista debes indicar al menos un conductor');
+      if (!d.vehicle)
+        issue(['vehicle'], 'Con el indicador de vehículo y conductores del transportista debes indicar la placa');
+      if (d.drivers.length === 0)
+        issue(
+          ['drivers'],
+          'Con el indicador de vehículo y conductores del transportista debes indicar al menos un conductor',
+        );
     }
   } else if (!d.indicators.m1lVehicle) {
     // En vehículos M1/L (autos y motos) SOL no exige placa ni conductor; en el resto sí.
-    if (!d.vehicle) issue(['vehicle'], 'En transporte privado debes indicar la placa del vehículo (salvo vehículos M1/L)');
-    if (d.drivers.length === 0) issue(['drivers'], 'En transporte privado debes indicar al menos un conductor (salvo vehículos M1/L)');
+    if (!d.vehicle)
+      issue(['vehicle'], 'En transporte privado debes indicar la placa del vehículo (salvo vehículos M1/L)');
+    if (d.drivers.length === 0)
+      issue(['drivers'], 'En transporte privado debes indicar al menos un conductor (salvo vehículos M1/L)');
   }
 });
 

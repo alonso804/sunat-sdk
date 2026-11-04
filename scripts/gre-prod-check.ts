@@ -26,14 +26,14 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import {
+  type DespatchInput,
+  type PreparedDespatch,
   SunatApiError,
   SunatClient,
   SunatFaultError,
   SunatTransportError,
   SunatValidationError,
   signingKeyFromPfx,
-  type DespatchInput,
-  type PreparedDespatch,
 } from '../src';
 import { parseCdrXml } from '../src/cdr';
 import { requestToken } from '../src/gre/api';
@@ -133,11 +133,13 @@ function checkSchema(prepared: PreparedDespatch): void {
 }
 
 function printError(error: unknown): never {
-  if (error instanceof SunatValidationError) console.error(`\nDatos inválidos (no se contactó a SUNAT): ${error.message}`);
+  if (error instanceof SunatValidationError)
+    console.error(`\nDatos inválidos (no se contactó a SUNAT): ${error.message}`);
   else if (error instanceof SunatApiError) {
     console.error(`\nSUNAT respondió HTTP ${error.status}${error.code ? ` (${error.code})` : ''}: ${error.message}`);
     for (const detail of error.details) console.error(`   - ${detail.code ?? ''} ${detail.message}`);
-    if (error.isAuthError) console.error('   Revisa client_id/client_secret, usuario y clave SOL, y los permisos del usuario secundario.');
+    if (error.isAuthError)
+      console.error('   Revisa client_id/client_secret, usuario y clave SOL, y los permisos del usuario secundario.');
   } else if (error instanceof SunatTransportError) console.error(`\nError de red: ${error.message}`);
   else if (error instanceof SunatFaultError) console.error(`\nSUNAT ${error.code}: ${error.sunatMessage}`);
   else console.error('\nError inesperado:', error);
@@ -145,7 +147,8 @@ function printError(error: unknown): never {
 }
 
 function describe(result: Awaited<ReturnType<SunatClient['sendDespatch']>>): void {
-  if (result.status === 'rejected') console.log(`\nResultado: RECHAZADA  código=${result.code}  mensaje=${result.message}`);
+  if (result.status === 'rejected')
+    console.log(`\nResultado: RECHAZADA  código=${result.code}  mensaje=${result.message}`);
   else if (result.status === 'pending') console.log(`\nResultado: SUNAT sigue procesando. Ticket: ${result.ticket}`);
   else console.log(`\nResultado: ${result.status.toUpperCase()}  ${result.cdr.description}`);
 }
@@ -197,11 +200,19 @@ try {
       signedXml: prepared.signedXml.replace('catalogo20">13</cbc:HandlingCode>', 'catalogo20">99</cbc:HandlingCode>'),
     };
     if (tampered.signedXml === prepared.signedXml) throw new Error('No se pudo alterar el XML de prueba.');
-    console.log(`Enviando ${prepared.baseName} con motivo de traslado inválido (99) a producción (debe ser rechazada)…`);
+    console.log(
+      `Enviando ${prepared.baseName} con motivo de traslado inválido (99) a producción (debe ser rechazada)…`,
+    );
     const result = await client.sendDespatch(tampered);
     describe(result);
-    if (result.status === 'rejected') console.log('Correcto: SUNAT la rechazó por una regla de negocio. La etapa de envío y lectura de errores funciona.');
-    else console.log(`\n¡ATENCIÓN! SUNAT NO la rechazó. Si quedó aceptada, dala de baja en SOL (traslado no iniciado): ${prepared.baseName}`);
+    if (result.status === 'rejected')
+      console.log(
+        'Correcto: SUNAT la rechazó por una regla de negocio. La etapa de envío y lectura de errores funciona.',
+      );
+    else
+      console.log(
+        `\n¡ATENCIÓN! SUNAT NO la rechazó. Si quedó aceptada, dala de baja en SOL (traslado no iniciado): ${prepared.baseName}`,
+      );
   }
 
   if (stage === 'positive') {
@@ -216,7 +227,9 @@ try {
     if (!answer) {
       if (!process.stdin.isTTY) {
         console.log(`\nEsta terminal no es interactiva, así que no puedo pedirte la confirmación. Nada se envió.`);
-        console.log(`Vuelve a correrlo con:  GRE_CONFIRM="ENVIAR ${prepared.baseName}" pnpm tsx --env-file=.env scripts/gre-prod-check.ts positive`);
+        console.log(
+          `Vuelve a correrlo con:  GRE_CONFIRM="ENVIAR ${prepared.baseName}" pnpm tsx --env-file=.env scripts/gre-prod-check.ts positive`,
+        );
         process.exit(0);
       }
       const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -237,14 +250,18 @@ try {
         writeFileSync(pdfPath, result.pdf.pdf);
         console.log(`PDF oficial guardado en ${pdfPath}.`);
       } else if (result.pdfError) {
-        console.log(`No se pudo bajar el PDF ahora (${result.pdfError.message}). La guía quedó aceptada; usa la etapa pdf más tarde.`);
+        console.log(
+          `No se pudo bajar el PDF ahora (${result.pdfError.message}). La guía quedó aceptada; usa la etapa pdf más tarde.`,
+        );
       }
       writeFileSync(`out/${prepared.baseName}.xml`, prepared.signedXml);
       writeFileSync(`out/R-${prepared.baseName}.zip`, result.cdrZip);
       const xml = unzipFiles(result.cdrZip);
       console.log(`\nGuardados en out/: XML firmado y CDR (${Object.keys(xml).join(', ')}).`);
       if (result.cdr.qrUrl) console.log(`URL del QR (PDF oficial): ${result.cdr.qrUrl}\n(para descargarlo: etapa pdf)`);
-      console.log(`Para limpiar: dar de baja ${prepared.baseName} en SOL (Empresas → Guía de Remisión Electrónica → Baja de GRE).`);
+      console.log(
+        `Para limpiar: dar de baja ${prepared.baseName} en SOL (Empresas → Guía de Remisión Electrónica → Baja de GRE).`,
+      );
     }
   }
 } catch (error) {

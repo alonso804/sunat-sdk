@@ -1,16 +1,22 @@
-import { readCdrFromApplicationResponse, type Cdr } from '../cdr';
-import { RELATED_DOCUMENT_TYPES, SELF_RECIPIENT_REASONS, TRANSFER_REASONS, type TransferReason, type TransportMode } from '../catalogs';
+import {
+  RELATED_DOCUMENT_TYPES,
+  SELF_RECIPIENT_REASONS,
+  TRANSFER_REASONS,
+  type TransferReason,
+  type TransportMode,
+} from '../catalogs';
+import { type Cdr, readCdrFromApplicationResponse } from '../cdr';
 import { SunatApiError, SunatTransportError, SunatValidationError } from '../errors';
+import type { TicketStatus } from '../gre/api';
+import type { DespatchPdf } from '../gre/pdf';
 import type { Issuer } from '../invoice/schema';
 import { dec, fmtFixed, fmtUpTo } from '../money';
 import type { SigningKey } from '../signing/certificate';
-import { extractDigestValue, signUblXml, type SignatureAlgorithm } from '../signing/xmldsig';
+import { extractDigestValue, type SignatureAlgorithm, signUblXml } from '../signing/xmldsig';
 import { TextCharset, toLatin1Deep } from '../text-charset';
 import { toValidationError } from '../validation';
 import { limaDateTime } from '../xml';
-import type { TicketStatus } from '../gre/api';
-import type { DespatchPdf } from '../gre/pdf';
-import { DespatchSchema, type DespatchInput } from './schema';
+import { type DespatchInput, DespatchSchema } from './schema';
 import { buildDespatchXml, despatchBaseName, type ResolvedParty } from './xml';
 
 /** Resumen legible para mostrar al usuario y pedir confirmación antes de emitir. */
@@ -153,10 +159,14 @@ export function prepareDespatch(params: {
       'El traslado inicia hoy. Una vez iniciado ya no se puede dar de baja la GRE en SOL (art. 8 de la RS 000123-2022/SUNAT).',
     );
   } else {
-    warnings.push('Mientras el traslado no haya iniciado, la GRE se puede dar de baja en SOL (art. 8 de la RS 000123-2022/SUNAT).');
+    warnings.push(
+      'Mientras el traslado no haya iniciado, la GRE se puede dar de baja en SOL (art. 8 de la RS 000123-2022/SUNAT).',
+    );
   }
   if (recipient.docType === '6' && recipient.docNumber !== issuer.ruc) {
-    warnings.push('El destinatario recibirá un aviso en su Buzón SOL y podrá declarar su no conformidad (art. 9 de la RS 000123-2022/SUNAT).');
+    warnings.push(
+      'El destinatario recibirá un aviso en su Buzón SOL y podrá declarar su no conformidad (art. 9 de la RS 000123-2022/SUNAT).',
+    );
   }
 
   const unsignedXml = buildDespatchXml({ issuer, despatch: d, recipient, issuedAt });
@@ -213,9 +223,22 @@ export function mapTicketStatus(baseName: string, ticket: string, status: Ticket
       }
       const { cdr, cdrZip } = readCdrFromApplicationResponse(status.cdrBase64);
       if (!cdr.accepted) {
-        return { status: DespatchStatus.rejected, baseName, ticket, code: cdr.responseCode, message: cdr.description, cdr };
+        return {
+          status: DespatchStatus.rejected,
+          baseName,
+          ticket,
+          code: cdr.responseCode,
+          message: cdr.description,
+          cdr,
+        };
       }
-      return { status: cdr.notes.length > 0 ? DespatchStatus.acceptedWithObservations : DespatchStatus.accepted, baseName, ticket, cdr, cdrZip };
+      return {
+        status: cdr.notes.length > 0 ? DespatchStatus.acceptedWithObservations : DespatchStatus.accepted,
+        baseName,
+        ticket,
+        cdr,
+        cdrZip,
+      };
     }
 
     case '99': {

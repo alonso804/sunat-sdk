@@ -3,7 +3,7 @@ import { SunatClient, SunatFaultError, SunatTransportError } from '../src';
 import { parseCdrXml, readCdrFromApplicationResponse } from '../src/cdr';
 import { buildSendBillEnvelope, parseSendBillResponse } from '../src/soap/bill-service';
 import { unzipFiles, zipSingleFile } from '../src/zip';
-import { TEST_ISSUER, cdrXml, faultResponse, sampleInvoice, sendBillOkResponse, testCertificate } from './helpers';
+import { cdrXml, faultResponse, sampleInvoice, sendBillOkResponse, TEST_ISSUER, testCertificate } from './helpers';
 
 const BASE = '20000000001-01-F001-1';
 
@@ -16,7 +16,11 @@ describe('zip', () => {
 
 describe('sobre SOAP', () => {
   it('incluye WS-Security con usuario y clave, y el archivo en base64', () => {
-    const envelope = buildSendBillEnvelope({ username: '20000000001MODDATOS', password: 'MOD&DATOS' }, `${BASE}.zip`, 'QUJD');
+    const envelope = buildSendBillEnvelope(
+      { username: '20000000001MODDATOS', password: 'MOD&DATOS' },
+      `${BASE}.zip`,
+      'QUJD',
+    );
     expect(envelope).toContain('<wsse:Username>20000000001MODDATOS</wsse:Username>');
     expect(envelope).toContain('PasswordText">MOD&amp;DATOS</wsse:Password>');
     expect(envelope).toContain(`<fileName>${BASE}.zip</fileName>`);
@@ -55,7 +59,13 @@ describe('respuestas de sendBill', () => {
 
   it('decodifica las referencias numéricas (&#243;) que SUNAT usa para los acentos', () => {
     try {
-      parseSendBillResponse(500, faultResponse('soap-env:Client.2335', 'El documento electr&amp;#243;nico ingresado ha sido alterado &#8211; fin'));
+      parseSendBillResponse(
+        500,
+        faultResponse(
+          'soap-env:Client.2335',
+          'El documento electr&amp;#243;nico ingresado ha sido alterado &#8211; fin',
+        ),
+      );
       expect.unreachable();
     } catch (error) {
       expect((error as SunatFaultError).sunatMessage).toBe('El documento electrónico ingresado ha sido alterado – fin');
@@ -64,7 +74,10 @@ describe('respuestas de sendBill', () => {
 
   it('interpreta un rechazo de validación (2000–3999)', () => {
     try {
-      parseSendBillResponse(500, faultResponse('soap-env:Client.2335', 'El documento electrónico ingresado ha sido alterado'));
+      parseSendBillResponse(
+        500,
+        faultResponse('soap-env:Client.2335', 'El documento electrónico ingresado ha sido alterado'),
+      );
       expect.unreachable();
     } catch (error) {
       expect((error as SunatFaultError).kind).toBe('rejected');
@@ -104,12 +117,21 @@ describe('respuestas de sendBill', () => {
 
 describe('CDR', () => {
   it('lee un CDR aceptado', () => {
-    const cdr = parseCdrXml(cdrXml({ reference: 'F001-1', code: '0', description: 'La Factura numero F001-1, ha sido aceptada' }));
+    const cdr = parseCdrXml(
+      cdrXml({ reference: 'F001-1', code: '0', description: 'La Factura numero F001-1, ha sido aceptada' }),
+    );
     expect(cdr).toMatchObject({ referenceId: 'F001-1', responseCode: '0', accepted: true, notes: [] });
   });
 
   it('lee observaciones', () => {
-    const cdr = parseCdrXml(cdrXml({ reference: 'F001-1', code: '0', description: 'ok', notes: ['4287 - observación A', '4288 - observación B'] }));
+    const cdr = parseCdrXml(
+      cdrXml({
+        reference: 'F001-1',
+        code: '0',
+        description: 'ok',
+        notes: ['4287 - observación A', '4288 - observación B'],
+      }),
+    );
     expect(cdr.notes).toEqual(['4287 - observación A', '4288 - observación B']);
   });
 
@@ -131,10 +153,13 @@ describe('SunatClient.sendInvoice (fetch simulado)', () => {
       fetch: fetchMock,
       retry: { delayMs: 0, ...retry },
     });
-  const respond = (body: string, status = 200) => vi.fn(async () => new Response(body, { status })) as unknown as typeof fetch;
+  const respond = (body: string, status = 200) =>
+    vi.fn(async () => new Response(body, { status })) as unknown as typeof fetch;
 
   it('envía el ZIP con el nombre correcto y devuelve aceptada', async () => {
-    const fetchMock = respond(sendBillOkResponse(BASE, cdrXml({ reference: 'F001-1', code: '0', description: 'aceptada' })));
+    const fetchMock = respond(
+      sendBillOkResponse(BASE, cdrXml({ reference: 'F001-1', code: '0', description: 'aceptada' })),
+    );
     const client = makeClient(fetchMock);
     const result = await client.sendInvoice(client.prepareInvoice(sampleInvoice()));
 
@@ -152,7 +177,11 @@ describe('SunatClient.sendInvoice (fetch simulado)', () => {
   });
 
   it('marca aceptada con observaciones', async () => {
-    const client = makeClient(respond(sendBillOkResponse(BASE, cdrXml({ reference: 'F001-1', code: '0', description: 'ok', notes: ['4287 - obs'] }))));
+    const client = makeClient(
+      respond(
+        sendBillOkResponse(BASE, cdrXml({ reference: 'F001-1', code: '0', description: 'ok', notes: ['4287 - obs'] })),
+      ),
+    );
     const result = await client.sendInvoice(client.prepareInvoice(sampleInvoice()));
     expect(result.status).toBe('accepted_with_observations');
   });
@@ -175,18 +204,31 @@ describe('SunatClient.sendInvoice (fetch simulado)', () => {
       throw new TypeError('fetch failed');
     }) as unknown as typeof fetch;
     const client = makeClient(failing);
-    await expect(client.sendInvoice(client.prepareInvoice(sampleInvoice()))).rejects.toBeInstanceOf(SunatTransportError);
+    await expect(client.sendInvoice(client.prepareInvoice(sampleInvoice()))).rejects.toBeInstanceOf(
+      SunatTransportError,
+    );
   });
 
   describe('reintentos', () => {
-    const ok = () => new Response(sendBillOkResponse(BASE, cdrXml({ reference: 'F001-1', code: '0', description: 'aceptada' })), { status: 200 });
-    const proxy401 = () => new Response('<html><body><h1>401 Authorization Required</h1></body></html>', { status: 401 });
+    const ok = () =>
+      new Response(sendBillOkResponse(BASE, cdrXml({ reference: 'F001-1', code: '0', description: 'aceptada' })), {
+        status: 200,
+      });
+    const proxy401 = () =>
+      new Response('<html><body><h1>401 Authorization Required</h1></body></html>', { status: 401 });
     /** Error de `fetch` cuando la conexión no llegó a abrirse (misma forma que produce Node). */
-    const refused = () => Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }) });
+    const refused = () =>
+      Object.assign(new TypeError('fetch failed'), {
+        cause: Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }),
+      });
     const calls = (mock: unknown) => (mock as ReturnType<typeof vi.fn>).mock.calls.length;
 
     it('reintenta el 401 del proxy (peticiones muy seguidas) y la factura queda aceptada', async () => {
-      const mock = vi.fn().mockResolvedValueOnce(proxy401()).mockResolvedValueOnce(proxy401()).mockResolvedValueOnce(ok());
+      const mock = vi
+        .fn()
+        .mockResolvedValueOnce(proxy401())
+        .mockResolvedValueOnce(proxy401())
+        .mockResolvedValueOnce(ok());
       const client = makeClient(mock as unknown as typeof fetch);
       const result = await client.sendInvoice(client.prepareInvoice(sampleInvoice()));
       expect(result.status).toBe('accepted');
@@ -222,13 +264,17 @@ describe('SunatClient.sendInvoice (fetch simulado)', () => {
       for (const failure of failures) {
         const mock = vi.fn(failure);
         const client = makeClient(mock as unknown as typeof fetch);
-        await expect(client.sendInvoice(client.prepareInvoice(sampleInvoice()))).rejects.toBeInstanceOf(SunatTransportError);
+        await expect(client.sendInvoice(client.prepareInvoice(sampleInvoice()))).rejects.toBeInstanceOf(
+          SunatTransportError,
+        );
         expect(calls(mock)).toBe(1);
       }
     });
 
     it('no reintenta un fault de SUNAT (rechazo o excepción)', async () => {
-      const mock = vi.fn(async () => new Response(faultResponse('soap-env:Client.0111', 'No tiene el perfil'), { status: 500 }));
+      const mock = vi.fn(
+        async () => new Response(faultResponse('soap-env:Client.0111', 'No tiene el perfil'), { status: 500 }),
+      );
       const client = makeClient(mock as unknown as typeof fetch);
       await expect(client.sendInvoice(client.prepareInvoice(sampleInvoice()))).rejects.toBeInstanceOf(SunatFaultError);
       expect(calls(mock)).toBe(1);
@@ -237,7 +283,9 @@ describe('SunatClient.sendInvoice (fetch simulado)', () => {
     it('`maxRetries: 0` desactiva los reintentos', async () => {
       const mock = vi.fn(async () => proxy401());
       const client = makeClient(mock as unknown as typeof fetch, { maxRetries: 0 });
-      await expect(client.sendInvoice(client.prepareInvoice(sampleInvoice()))).rejects.toBeInstanceOf(SunatTransportError);
+      await expect(client.sendInvoice(client.prepareInvoice(sampleInvoice()))).rejects.toBeInstanceOf(
+        SunatTransportError,
+      );
       expect(calls(mock)).toBe(1);
     });
   });

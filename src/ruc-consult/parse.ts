@@ -79,15 +79,51 @@ const RE_CIIU = /^(\d+)\s*-\s*([\s\S]*)$/;
 
 /** Entidades que trae la página de SUNAT (acentos es-PE y signos comunes); las desconocidas quedan igual. */
 const ENTITIES: Record<string, string> = {
-  aacute: 'á', eacute: 'é', iacute: 'í', oacute: 'ó', uacute: 'ú',
-  Aacute: 'Á', Eacute: 'É', Iacute: 'Í', Oacute: 'Ó', Uacute: 'Ú',
-  ntilde: 'ñ', Ntilde: 'Ñ', uuml: 'ü', Uuml: 'Ü',
-  agrave: 'à', egrave: 'è', ograve: 'ò', ugrave: 'ù',
-  Agrave: 'À', Egrave: 'È', Ograve: 'Ò', Ugrave: 'Ù',
-  amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', nbsp: ' ',
-  ldquo: '“', rdquo: '”', lsquo: '‘', rsquo: '’', hellip: '…',
-  mdash: '—', ndash: '–', laquo: '«', raquo: '»', deg: '°', iexcl: '¡',
-  sect: '§', middot: '·', times: '×', sup2: '²', sup3: '³', frac12: '½',
+  aacute: 'á',
+  eacute: 'é',
+  iacute: 'í',
+  oacute: 'ó',
+  uacute: 'ú',
+  Aacute: 'Á',
+  Eacute: 'É',
+  Iacute: 'Í',
+  Oacute: 'Ó',
+  Uacute: 'Ú',
+  ntilde: 'ñ',
+  Ntilde: 'Ñ',
+  uuml: 'ü',
+  Uuml: 'Ü',
+  agrave: 'à',
+  egrave: 'è',
+  ograve: 'ò',
+  ugrave: 'ù',
+  Agrave: 'À',
+  Egrave: 'È',
+  Ograve: 'Ò',
+  Ugrave: 'Ù',
+  amp: '&',
+  quot: '"',
+  apos: "'",
+  lt: '<',
+  gt: '>',
+  nbsp: ' ',
+  ldquo: '“',
+  rdquo: '”',
+  lsquo: '‘',
+  rsquo: '’',
+  hellip: '…',
+  mdash: '—',
+  ndash: '–',
+  laquo: '«',
+  raquo: '»',
+  deg: '°',
+  iexcl: '¡',
+  sect: '§',
+  middot: '·',
+  times: '×',
+  sup2: '²',
+  sup3: '³',
+  frac12: '½',
 };
 
 function unescapeEntities(text: string): string {
@@ -129,10 +165,7 @@ function flexible(text: string): string {
  * `h4` con la etiqueta (p. ej. "Estado del Contribuyente:") seguido del valor en un `<p class="list-group-item-text">`.
  */
 function fieldValue(page: string, label: string): string | undefined {
-  const re = new RegExp(
-    `<h4[^>]*>\\s*${flexible(label)}\\s*:?\\s*<\\/h4>[\\s\\S]*?<p[^>]*>([\\s\\S]*?)<\\/p>`,
-    'i',
-  );
+  const re = new RegExp(`<h4[^>]*>\\s*${flexible(label)}\\s*:?\\s*<\\/h4>[\\s\\S]*?<p[^>]*>([\\s\\S]*?)<\\/p>`, 'i');
   const value = clean(re.exec(page)?.[1] ?? '');
   return value && value !== '-' ? value : undefined; // "-" o vacío (o "&nbsp;"): SUNAT no informa el dato
 }
@@ -160,7 +193,11 @@ export function parseRucPage(page: string, requestedRuc: string): RucConsultResu
     throw unexpected(`SUNAT respondió por otro RUC (${respondedRuc}); se pidió ${requestedRuc}.`);
   }
 
-  const result: Extract<RucConsultResult, { status: typeof RucConsultStatus.found }> = { status: RucConsultStatus.found, ruc: requestedRuc, legalName: clean(mRuc[2]!) };
+  const result: Extract<RucConsultResult, { status: typeof RucConsultStatus.found }> = {
+    status: RucConsultStatus.found,
+    ruc: requestedRuc,
+    legalName: clean(mRuc[2]!),
+  };
 
   const activities = RE_ACTIVITIES.exec(page)?.[1];
   const principal = activities ? RE_PRINCIPAL.exec(activities)?.[1] : undefined;

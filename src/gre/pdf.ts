@@ -36,7 +36,12 @@ async function fetchWithinSunat(doFetch: typeof fetch, url: string, timeoutMs: n
   const signal = AbortSignal.timeout(timeoutMs);
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const response = await doFetch(current, { method: 'GET', headers: { Accept: 'application/pdf' }, redirect: 'manual', signal });
+    const response = await doFetch(current, {
+      method: 'GET',
+      headers: { Accept: 'application/pdf' },
+      redirect: 'manual',
+      signal,
+    });
     const location = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null;
     if (!location) return response;
     const next = new URL(location, current).toString();
@@ -81,7 +86,9 @@ function fileNameFrom(header: string | null): string | undefined {
  */
 export async function downloadDespatchPdf(qrUrl: string, options: DespatchPdfOptions = {}): Promise<DespatchPdf> {
   if (!isSunatHttpsUrl(qrUrl)) {
-    throw new SunatValidationError('La URL del QR debe ser https y de un dominio sunat.gob.pe.', [{ path: 'qrUrl', message: 'URL no permitida' }]);
+    throw new SunatValidationError('La URL del QR debe ser https y de un dominio sunat.gob.pe.', [
+      { path: 'qrUrl', message: 'URL no permitida' },
+    ]);
   }
   const doFetch = options.fetch ?? fetch;
   const retries = Math.max(0, options.retry?.maxRetries ?? 4);
@@ -113,7 +120,13 @@ export async function downloadDespatchPdf(qrUrl: string, options: DespatchPdfOpt
     // Un PDF empieza con "%PDF-". Se comprueba el contenido y no solo la cabecera, por si llega una página de error.
     const isPdf = bytes.length > 5 && Buffer.from(bytes.subarray(0, 5)).toString('latin1') === '%PDF-';
     if (!isPdf) {
-      throw new SunatApiError('SUNAT respondió, pero el contenido no es un PDF.', response.status, undefined, [], Buffer.from(bytes.subarray(0, 300)).toString('utf8'));
+      throw new SunatApiError(
+        'SUNAT respondió, pero el contenido no es un PDF.',
+        response.status,
+        undefined,
+        [],
+        Buffer.from(bytes.subarray(0, 300)).toString('utf8'),
+      );
     }
     return { pdf: bytes, fileName: fileNameFrom(response.headers.get('content-disposition')) };
   }

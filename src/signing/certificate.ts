@@ -61,7 +61,9 @@ export function signingKeyFromPfx(pfx: Uint8Array, passphrase: string): SigningK
     const der = forge.util.createBuffer(Buffer.from(pfx).toString('binary'));
     p12 = forge.pkcs12.pkcs12FromAsn1(forge.asn1.fromDer(der), passphrase);
   } catch (cause) {
-    throw new SunatError('No se pudo abrir el archivo PFX: verifica la contraseña y que el archivo no esté dañado.', { cause });
+    throw new SunatError('No se pudo abrir el archivo PFX: verifica la contraseña y que el archivo no esté dañado.', {
+      cause,
+    });
   }
 
   const bagsOf = (oid: string): forge.pkcs12.Bag[] => p12.getBags({ bagType: oid })[oid] ?? [];
@@ -69,7 +71,9 @@ export function signingKeyFromPfx(pfx: Uint8Array, passphrase: string): SigningK
   const keyBags = [...bagsOf(OID.pkcs8ShroudedKeyBag), ...bagsOf(OID.keyBag)];
   const privateKey = keyBags
     .map((bag) => bag.key as unknown)
-    .find((key): key is forge.pki.rsa.PrivateKey => typeof key === 'object' && key !== null && 'n' in key && 'd' in key);
+    .find(
+      (key): key is forge.pki.rsa.PrivateKey => typeof key === 'object' && key !== null && 'n' in key && 'd' in key,
+    );
   if (!privateKey) throw new SunatError('El PFX no contiene una llave privada RSA.');
 
   const certificates = bagsOf(OID.certBag)
@@ -164,7 +168,8 @@ export function checkCertificate(info: CertificateInfo, options: { ruc?: string;
   const warnings: string[] = [];
   const daysRemaining = Math.floor((info.notAfter.getTime() - now.getTime()) / DAY_MS);
 
-  if (now < info.notBefore) problems.push(`El certificado aún no es válido (vigente desde ${isoDate(info.notBefore)}).`);
+  if (now < info.notBefore)
+    problems.push(`El certificado aún no es válido (vigente desde ${isoDate(info.notBefore)}).`);
   if (now > info.notAfter) {
     problems.push(`El certificado venció el ${isoDate(info.notAfter)}.`);
   } else if (daysRemaining <= 60) {

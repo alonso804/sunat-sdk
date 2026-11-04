@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SunatClient, TextCharset } from '../src';
 import { verifyUblSignature } from '../src/signing/xmldsig';
 import { toLatin1Deep, toLatin1Text } from '../src/text-charset';
-import { TEST_ISSUER, sampleDespatch, sampleInvoice, testCertificate } from './helpers';
+import { sampleDespatch, sampleInvoice, TEST_ISSUER, testCertificate } from './helpers';
 
 const { key } = testCertificate();
 /** El texto del caso 3 de la prueba en beta (aceptado tal cual por SUNAT). */
@@ -50,7 +50,10 @@ describe('SunatClient con textCharset', () => {
     });
   const invoiceWith = (client: SunatClient) =>
     client.prepareInvoice(
-      sampleInvoice({ note: 'Entrega — Peñuelas', items: [{ description: OUTSIDE_LATIN1, quantity: 1, unitPrice: 11.8 }] }),
+      sampleInvoice({
+        note: 'Entrega — Peñuelas',
+        items: [{ description: OUTSIDE_LATIN1, quantity: 1, unitPrice: 11.8 }],
+      }),
     );
 
   it('por defecto (unicode) envía el texto tal cual', () => {

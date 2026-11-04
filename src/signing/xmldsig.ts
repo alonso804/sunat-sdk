@@ -35,7 +35,11 @@ const ENVELOPED = 'http://www.w3.org/2000/09/xmldsig#enveloped-signature';
  * `ext:UBLExtensions/ext:UBLExtension/ext:ExtensionContent`, como exige SUNAT.
  * Después de firmar no se puede modificar el XML.
  */
-export function signUblXml(xml: string, key: SigningKey, algorithm: SignatureAlgorithm = SignatureAlgorithm.sha1): string {
+export function signUblXml(
+  xml: string,
+  key: SigningKey,
+  algorithm: SignatureAlgorithm = SignatureAlgorithm.sha1,
+): string {
   const algo = ALGORITHMS[algorithm];
   const sig = new SignedXml({
     privateKey: key.privateKeyPem,

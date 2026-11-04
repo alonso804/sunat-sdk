@@ -1,5 +1,5 @@
 import { AFFECTATIONS, IGV_RATE, type IgvAffectation } from '../catalogs';
-import { D, dec, round, type Dec } from '../money';
+import { D, type Dec, dec, round } from '../money';
 import type { Invoice } from './schema';
 
 export type CalculatedLine = {

@@ -3,13 +3,20 @@ import { describe, expect, it, vi } from 'vitest';
 import { SunatApiError, SunatValidationError } from '../src';
 import { consultRuc, type RucConsultResult } from '../src/ruc-consult';
 import { CHALLENGE_CODE } from '../src/ruc-consult/api';
-import { RucPageError, parseRucPage } from '../src/ruc-consult/parse';
+import { parseRucPage, RucPageError } from '../src/ruc-consult/parse';
 
 /** RUC real y público usado en la lógica de referencia (EMPRESA DE TRANSPORTES PERU BUS KLEY S.A.C.). */
 const RUC = '20539579356';
 const LEGAL_NAME = 'EMPRESA DE TRANSPORTES PERU BUS KLEY S.A.C.';
 
-type Reply = { status?: number; contentType?: string; headers?: Record<string, string>; body?: string; bytes?: Uint8Array; fail?: unknown };
+type Reply = {
+  status?: number;
+  contentType?: string;
+  headers?: Record<string, string>;
+  body?: string;
+  bytes?: Uint8Array;
+  fail?: unknown;
+};
 
 /** Fetch simulado que responde en orden y registra URL, headers y campos del formulario de cada llamada. */
 function mockFetch(replies: Reply[]) {
@@ -19,7 +26,11 @@ function mockFetch(replies: Reply[]) {
     const next = replies[step];
     step += 1;
     if (!next) throw new Error(`Llamada n.º ${step} inesperada a ${String(url)}`);
-    calls.push({ url: String(url), init: init ?? {}, fields: Object.fromEntries(new URLSearchParams(String(init?.body))) });
+    calls.push({
+      url: String(url),
+      init: init ?? {},
+      fields: Object.fromEntries(new URLSearchParams(String(init?.body))),
+    });
     if (next.fail !== undefined) throw next.fail;
     return new Response(next.bytes ?? next.body ?? '', {
       status: next.status ?? 200,
@@ -85,7 +96,8 @@ describe('consultRuc (página simulada)', () => {
       tradeName: 'PERU BUS KLEY',
       taxpayerStatus: 'ACTIVO',
       taxpayerCondition: 'HABIDO',
-      fiscalAddress: 'OTR.CIUDAD MAJES MZA. O-5 LOTE. 18 H.U. MOD. A SECTOR 3 (OVALO DE CIUDAD MAJES) AREQUIPA - CAYLLOMA - MAJES',
+      fiscalAddress:
+        'OTR.CIUDAD MAJES MZA. O-5 LOTE. 18 H.U. MOD. A SECTOR 3 (OVALO DE CIUDAD MAJES) AREQUIPA - CAYLLOMA - MAJES',
       mainActivity: { code: '4922', description: 'OTRAS ACTIVIDADES DE TRANSPORTE POR VÍA TERRESTRE' },
     });
   });
@@ -145,7 +157,10 @@ describe('consultRuc (página simulada)', () => {
     const mock = mockFetch([
       {
         body: resultsPage(RUC, LEGAL_NAME, {
-          activities: ['4921 - TRANSPORTE PRIVADO DE CARGA (DESDE UN INCISO A LA PROVINCIA)', '5238 - VENTA POR CORREO'],
+          activities: [
+            '4921 - TRANSPORTE PRIVADO DE CARGA (DESDE UN INCISO A LA PROVINCIA)',
+            '5238 - VENTA POR CORREO',
+          ],
         }),
       },
     ]);
@@ -158,7 +173,15 @@ describe('consultRuc (página simulada)', () => {
   });
 
   it('una actividad sin código y los campos vacíos quedan como no informados', async () => {
-    const mock = mockFetch([{ body: resultsPage(RUC, 'CONTRIBUYENTE SIN ACTIVIDAD ECONOMICA S.A.', { tradeName: '-', status: 'ACTIVO', condition: 'NO HABIDO' }) }]);
+    const mock = mockFetch([
+      {
+        body: resultsPage(RUC, 'CONTRIBUYENTE SIN ACTIVIDAD ECONOMICA S.A.', {
+          tradeName: '-',
+          status: 'ACTIVO',
+          condition: 'NO HABIDO',
+        }),
+      },
+    ]);
     const result = await consultRuc(RUC, { fetch: mock.fn, retry: { delayMs: 0 } });
     expect(result).toEqual({
       status: 'found',
@@ -185,7 +208,10 @@ describe('consultRuc (página simulada)', () => {
 
   it('recorta los espacios del RUC antes de usarlo', async () => {
     const mock = mockFetch([{ body: notFoundPage() }]);
-    expect(await consultRuc(`  ${RUC}  `, { fetch: mock.fn, retry: { delayMs: 0 } })).toEqual({ status: 'not_found', ruc: RUC });
+    expect(await consultRuc(`  ${RUC}  `, { fetch: mock.fn, retry: { delayMs: 0 } })).toEqual({
+      status: 'not_found',
+      ruc: RUC,
+    });
     expect(mock.calls[0]!.fields.nroRuc).toBe(RUC);
   });
 
@@ -211,7 +237,9 @@ describe('consultRuc (página simulada)', () => {
 
   it('el desafío no cae en el fallback de curl si el que llama desactiva curlFallback', async () => {
     const mock = mockFetch([{ status: 403, headers: { 'cf-mitigated': 'challenge' }, body: challengePage() }]);
-    const error = await consultRuc(RUC, { fetch: mock.fn, curlFallback: false, retry: { delayMs: 0 } }).catch((e: unknown) => e);
+    const error = await consultRuc(RUC, { fetch: mock.fn, curlFallback: false, retry: { delayMs: 0 } }).catch(
+      (e: unknown) => e,
+    );
     expect(error).toBeInstanceOf(SunatApiError);
     expect((error as SunatApiError).code).toBe(CHALLENGE_CODE);
     expect(mock.step()).toBe(1);
@@ -234,7 +262,11 @@ describe('consultRuc (página simulada)', () => {
     const validPage = resultsPage(RUC, LEGAL_NAME);
 
     it('reintenta un corte de red y una página que no se puede interpretar', async () => {
-      const mock = mockFetch([{ fail: new TypeError('fetch failed') }, { body: '<html>SUNAT en mantenimiento</html>' }, { body: validPage }]);
+      const mock = mockFetch([
+        { fail: new TypeError('fetch failed') },
+        { body: '<html>SUNAT en mantenimiento</html>' },
+        { body: validPage },
+      ]);
       const result = await consultRuc(RUC, { fetch: mock.fn, retry: { delayMs: 0 } });
       expect(found(result).legalName).toBe(LEGAL_NAME);
       expect(mock.step()).toBe(3);
@@ -272,7 +304,12 @@ describe('consultRuc (página simulada)', () => {
 
     it('rechaza si SUNAT responde por otro RUC (y reintenta antes de rendirse)', async () => {
       const otherRucPage = resultsPage('20131312955', 'OTRA EMPRESA SOCIEDAD ANONIMA CERRADA');
-      const mock = mockFetch([{ body: otherRucPage }, { body: otherRucPage }, { body: otherRucPage }, { body: otherRucPage }]);
+      const mock = mockFetch([
+        { body: otherRucPage },
+        { body: otherRucPage },
+        { body: otherRucPage },
+        { body: otherRucPage },
+      ]);
       const error = await consultRuc(RUC, { fetch: mock.fn, retry: { delayMs: 0 } }).catch((e: unknown) => e);
       expect(error).toBeInstanceOf(RucPageError);
       expect((error as RucPageError).message).toContain('20131312955');

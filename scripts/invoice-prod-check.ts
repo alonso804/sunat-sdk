@@ -51,15 +51,23 @@ try {
   const result = await client.getInvoiceStatus({ series, number });
   console.log(`\nSUNAT respondió: código=${result.statusCode}  mensaje=${result.statusMessage}`);
   if (result.cdr) console.log(`CDR adjunto: ${result.cdr.referenceId} → ${result.cdr.description}`);
-  if (result.statusCode === '0127') console.log('(0127 "El ticket no existe": es lo que SUNAT respondió el 2026-11-01 para un comprobante que no existe.)');
-  console.log('\nSUNAT aceptó el usuario, la clave y el permiso de CONSULTA (si fallaran, habría respondido con una excepción).');
+  if (result.statusCode === '0127')
+    console.log(
+      '(0127 "El ticket no existe": es lo que SUNAT respondió el 2026-11-01 para un comprobante que no existe.)',
+    );
+  console.log(
+    '\nSUNAT aceptó el usuario, la clave y el permiso de CONSULTA (si fallaran, habría respondido con una excepción).',
+  );
   console.log('El permiso de ENVÍO (sendBill) no se puede comprobar sin enviar un comprobante real.');
 } catch (error) {
   if (error instanceof SunatFaultError) {
     console.error(`\nSUNAT respondió con una excepción ${error.code}: ${error.sunatMessage}`);
-    console.error('Si habla de usuario, clave o perfil, revisa SUNAT_SOL_USER/PASSWORD y los permisos del usuario en SOL.');
+    console.error(
+      'Si habla de usuario, clave o perfil, revisa SUNAT_SOL_USER/PASSWORD y los permisos del usuario en SOL.',
+    );
   } else if (error instanceof SunatTransportError) console.error(`\nError de red: ${error.message}`);
-  else if (error instanceof SunatValidationError) console.error(`\nDatos inválidos (no se contactó a SUNAT): ${error.message}`);
+  else if (error instanceof SunatValidationError)
+    console.error(`\nDatos inválidos (no se contactó a SUNAT): ${error.message}`);
   else console.error('\nError inesperado:', error);
   process.exit(1);
 }

@@ -7,7 +7,7 @@
  */
 import { SunatClient } from '../src';
 import type { SignatureAlgorithm } from '../src/signing/xmldsig';
-import { TEST_ISSUER, sampleInvoice, testCertificate } from '../test/helpers';
+import { sampleInvoice, TEST_ISSUER, testCertificate } from '../test/helpers';
 
 const algorithm = (process.argv[2] ?? 'sha1') as SignatureAlgorithm;
 // Escenarios para observar respuestas reales de error: ok | badpass | future
@@ -44,4 +44,7 @@ console.log(`Enviando ${prepared.baseName} (firma ${algorithm}) a BETA…`);
 console.log('Resumen:', JSON.stringify(prepared.summary, null, 2));
 
 const result = await client.sendInvoice(prepared);
-console.log('\nRESULTADO:', JSON.stringify(result, (_k, v) => (v instanceof Uint8Array ? `<${v.length} bytes>` : v), 2));
+console.log(
+  '\nRESULTADO:',
+  JSON.stringify(result, (_k, v) => (v instanceof Uint8Array ? `<${v.length} bytes>` : v), 2),
+);

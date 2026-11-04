@@ -1,5 +1,5 @@
 import type { Currency } from './catalogs';
-import { round, type Dec } from './money';
+import { type Dec, round } from './money';
 
 const UNITS = [
   '',

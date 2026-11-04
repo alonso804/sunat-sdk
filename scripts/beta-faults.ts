@@ -11,7 +11,7 @@ import { buildInvoiceXml } from '../src/invoice/xml';
 import { signUblXml } from '../src/signing/xmldsig';
 import { sendBill } from '../src/soap/bill-service';
 import { zipSingleFile } from '../src/zip';
-import { TEST_ISSUER, TEST_RUC, sampleInvoice, testCertificate } from '../test/helpers';
+import { sampleInvoice, TEST_ISSUER, TEST_RUC, testCertificate } from '../test/helpers';
 
 const { key } = testCertificate();
 const issuer = IssuerSchema.parse(TEST_ISSUER);
@@ -62,39 +62,42 @@ const want = (id: string) => process.argv.length <= 2 || process.argv.slice(2).i
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const n1 = freshNumber(1);
-if (want('a')) await attempt(
-  'a) Falta cbc:IssueDate (estructura inválida)',
-  `${TEST_RUC}-01-F001-${n1}`,
-  signUblXml(unsignedXml(n1).replace(/<cbc:IssueDate>[^<]*<\/cbc:IssueDate>/, ''), key),
-);
+if (want('a'))
+  await attempt(
+    'a) Falta cbc:IssueDate (estructura inválida)',
+    `${TEST_RUC}-01-F001-${n1}`,
+    signUblXml(unsignedXml(n1).replace(/<cbc:IssueDate>[^<]*<\/cbc:IssueDate>/, ''), key),
+  );
 
 const n2 = freshNumber(2);
-if (want('b')) await attempt(
-  'b) El nombre del archivo no coincide con el ID del documento',
-  `${TEST_RUC}-01-F001-${n2 + 100}`,
-  signUblXml(unsignedXml(n2), key),
-);
+if (want('b'))
+  await attempt(
+    'b) El nombre del archivo no coincide con el ID del documento',
+    `${TEST_RUC}-01-F001-${n2 + 100}`,
+    signUblXml(unsignedXml(n2), key),
+  );
 
 const n3 = freshNumber(3);
-if (want('c')) await attempt(
-  'c) Se altera el monto DESPUÉS de firmar',
-  `${TEST_RUC}-01-F001-${n3}`,
-  signUblXml(unsignedXml(n3), key).replace('<cbc:PayableAmount currencyID="PEN">413.00', '<cbc:PayableAmount currencyID="PEN">999.00'),
-);
+if (want('c'))
+  await attempt(
+    'c) Se altera el monto DESPUÉS de firmar',
+    `${TEST_RUC}-01-F001-${n3}`,
+    signUblXml(unsignedXml(n3), key).replace(
+      '<cbc:PayableAmount currencyID="PEN">413.00',
+      '<cbc:PayableAmount currencyID="PEN">999.00',
+    ),
+  );
 
 const n4 = freshNumber(4);
-if (want('d')) await attempt(
-  'd) Documento sin firmar',
-  `${TEST_RUC}-01-F001-${n4}`,
-  unsignedXml(n4),
-);
+if (want('d')) await attempt('d) Documento sin firmar', `${TEST_RUC}-01-F001-${n4}`, unsignedXml(n4));
 
 const n5 = freshNumber(5);
-if (want('e')) await attempt(
-  'e) Totales que no cuadran (IGV incorrecto), firmado',
-  `${TEST_RUC}-01-F001-${n5}`,
-  signUblXml(unsignedXml(n5).replaceAll('currencyID="PEN">63.00', 'currencyID="PEN">10.00'), key),
-);
+if (want('e'))
+  await attempt(
+    'e) Totales que no cuadran (IGV incorrecto), firmado',
+    `${TEST_RUC}-01-F001-${n5}`,
+    signUblXml(unsignedXml(n5).replaceAll('currencyID="PEN">63.00', 'currencyID="PEN">10.00'), key),
+  );
 
 const n6 = freshNumber(6);
 if (want('ok')) {

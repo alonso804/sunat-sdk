@@ -92,10 +92,7 @@ export class SunatApiError extends SunatError {
  * Antes de reenviar con otro número, consulta el estado del comprobante.
  */
 export class SunatTransportError extends SunatError {
-  constructor(
-    message: string,
-    options?: { cause?: unknown; httpStatus?: number },
-  ) {
+  constructor(message: string, options?: { cause?: unknown; httpStatus?: number }) {
     super(message, options?.cause === undefined ? undefined : { cause: options.cause });
     this.httpStatus = options?.httpStatus;
   }

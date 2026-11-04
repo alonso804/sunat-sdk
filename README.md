@@ -8,21 +8,21 @@ pensado para usarse como paquete privado desde otras aplicaciones (desktop / mó
 > La **factura electrónica (01)**, al contado y al crédito, funciona contra el ambiente **beta**; aún no se ha probado
 > en homologación ni producción.
 
-| Capacidad | Estado |
-|---|---|
-| Factura 01, contado, PEN/USD, gravado/exonerado/inafecto | ✅ aceptada por SUNAT beta (40 de 40 en pruebas aleatorias) |
-| Firma XMLDSig, ZIP, SOAP `sendBill`, lectura del CDR | ✅ |
-| Resumen para confirmar antes de emitir (`prepareInvoice`, `prepareDespatch`) | ✅ |
-| GRE remitente: XML UBL 2.1 + firma + API REST (token OAuth, ticket, CDR) | ✅ probada en producción · validada con el XSD oficial |
-| Validación local contra los XSD de UBL 2.1 (`xmllint`) | ✅ facturas y 4 variantes de GRE |
-| Factura a crédito (cuotas), orden de compra y guías relacionadas | ✅ reglas verificadas contra SUNAT beta (ver más abajo) |
-| Descuentos, anticipos, detracción | ⏳ |
-| Notas de crédito / débito, boletas | ⏳ |
-| Consulta de estado / CDR de facturas (`getStatusCdr`, `getInvoiceStatus`) | ✅ implementada · solo existe en producción |
+| Capacidad                                                                                                                                       | Estado                                                                                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Factura 01, contado, PEN/USD, gravado/exonerado/inafecto                                                                                        | ✅ aceptada por SUNAT beta (40 de 40 en pruebas aleatorias)                                                              |
+| Firma XMLDSig, ZIP, SOAP `sendBill`, lectura del CDR                                                                                            | ✅                                                                                                                       |
+| Resumen para confirmar antes de emitir (`prepareInvoice`, `prepareDespatch`)                                                                    | ✅                                                                                                                       |
+| GRE remitente: XML UBL 2.1 + firma + API REST (token OAuth, ticket, CDR)                                                                        | ✅ probada en producción · validada con el XSD oficial                                                                   |
+| Validación local contra los XSD de UBL 2.1 (`xmllint`)                                                                                          | ✅ facturas y 4 variantes de GRE                                                                                         |
+| Factura a crédito (cuotas), orden de compra y guías relacionadas                                                                                | ✅ reglas verificadas contra SUNAT beta (ver más abajo)                                                                  |
+| Descuentos, anticipos, detracción                                                                                                               | ⏳                                                                                                                       |
+| Notas de crédito / débito, boletas                                                                                                              | ⏳                                                                                                                       |
+| Consulta de estado / CDR de facturas (`getStatusCdr`, `getInvoiceStatus`)                                                                       | ✅ implementada · solo existe en producción                                                                              |
 | Consulta de datos de un contribuyente por RUC (`consultRuc`: razón social, nombre comercial, estado, condición, domicilio, actividad principal) | ✅ implementada · sin credenciales · con el desafío de anti-bot en pie, usa el fallback de curl automático (ver sección) |
-| GRE transportista, motivos de importación/exportación, baja de GRE por API | ⏳ |
-| Lectura de comprobantes y guías emitidos (SIRE y otros) | ⏳ |
-| Generación de PDF / QR | ⏳ |
+| GRE transportista, motivos de importación/exportación, baja de GRE por API                                                                      | ⏳                                                                                                                       |
+| Lectura de comprobantes y guías emitidos (SIRE y otros)                                                                                         | ⏳                                                                                                                       |
+| Generación de PDF / QR                                                                                                                          | ⏳                                                                                                                       |
 
 ## Requisitos
 
@@ -68,22 +68,26 @@ las clases de error: se puede comparar o asignar con el objeto o con el texto, y
 ```ts
 import { SendInvoiceStatus } from '@alonso804/sunat-sdk';
 
-if (result.status === SendInvoiceStatus.rejected) { /* el correlativo quedó consumido */ }
-function label(status: SendInvoiceStatus) { /* 'accepted' | 'accepted_with_observations' | 'rejected' */ }
+if (result.status === SendInvoiceStatus.rejected) {
+  /* el correlativo quedó consumido */
+}
+function label(status: SendInvoiceStatus) {
+  /* 'accepted' | 'accepted_with_observations' | 'rejected' */
+}
 ```
 
-| Objeto y tipo | Valores | Dónde |
-|---|---|---|
-| `SendInvoiceStatus` | `accepted`, `acceptedWithObservations`, `rejected` | `sendInvoice` |
-| `DespatchStatus` | `accepted`, `acceptedWithObservations`, `rejected`, `pending` | `sendDespatch`, `getDespatchStatus` |
-| `SunatFaultKind` | `exception`, `rejected`, `unknown` | `SunatFaultError.kind` |
-| `RucConsultStatus` (en `/ruc`) | `found`, `notFound` | `consultRuc` |
-| `Environment` | `beta`, `homologation`, `production` | `SunatClientConfig.environment` |
-| `SignatureAlgorithm` | `sha1`, `sha256` | `SunatClientConfig.signatureAlgorithm` |
-| `Currency` | `PEN`, `USD` | `InvoiceInput.currency` |
-| `PaymentType` | `cash`, `credit` | `InvoiceInput.payment.type` |
-| `TransportMode` | `public`, `private` | `DespatchInput.transportMode` |
-| `TextCharset` | `unicode`, `latin1` | `SunatClientConfig.textCharset` |
+| Objeto y tipo                  | Valores                                                       | Dónde                                  |
+| ------------------------------ | ------------------------------------------------------------- | -------------------------------------- |
+| `SendInvoiceStatus`            | `accepted`, `acceptedWithObservations`, `rejected`            | `sendInvoice`                          |
+| `DespatchStatus`               | `accepted`, `acceptedWithObservations`, `rejected`, `pending` | `sendDespatch`, `getDespatchStatus`    |
+| `SunatFaultKind`               | `exception`, `rejected`, `unknown`                            | `SunatFaultError.kind`                 |
+| `RucConsultStatus` (en `/ruc`) | `found`, `notFound`                                           | `consultRuc`                           |
+| `Environment`                  | `beta`, `homologation`, `production`                          | `SunatClientConfig.environment`        |
+| `SignatureAlgorithm`           | `sha1`, `sha256`                                              | `SunatClientConfig.signatureAlgorithm` |
+| `Currency`                     | `PEN`, `USD`                                                  | `InvoiceInput.currency`                |
+| `PaymentType`                  | `cash`, `credit`                                              | `InvoiceInput.payment.type`            |
+| `TransportMode`                | `public`, `private`                                           | `DespatchInput.transportMode`          |
+| `TextCharset`                  | `unicode`, `latin1`                                           | `SunatClientConfig.textCharset`        |
 
 #### Factura al crédito, orden de compra y guía relacionada
 
@@ -99,20 +103,20 @@ const prepared = client.prepareInvoice({
   purchaseOrder: '10194', // hasta 20 caracteres
   relatedDespatches: [{ series: 'T001', number: 15 }], // guía de remisión remitente (type '09'; '31' = transportista)
 });
-prepared.summary.total;   // "14.16": ya disponible para mostrarlo mientras eliges las cuotas
+prepared.summary.total; // "14.16": ya disponible para mostrarlo mientras eliges las cuotas
 prepared.summary.payment; // { type: 'credit', netPending: '14.16', installments: [{ number: 1, dueDate, amount: '7.08' }, …] }
 ```
 
 Reglas verificadas contra el servicio de **beta** de SUNAT (el SDK las valida antes de enviar, porque un rechazo de una
 factura consume el correlativo):
 
-| Regla | Código de SUNAT |
-|---|---|
-| Las cuotas deben sumar el monto neto pendiente | 3319 |
-| El monto neto pendiente no puede ser mayor al importe total (sí puede ser menor) | 3265 |
-| El vencimiento de cada cuota debe ser **posterior** a la fecha de emisión (no igual) | 3267 |
-| Máximo 60 cuotas (límite de SOL) | — |
-| El orden de las cuotas no importa (SUNAT acepta fechas desordenadas) | — |
+| Regla                                                                                | Código de SUNAT |
+| ------------------------------------------------------------------------------------ | --------------- |
+| Las cuotas deben sumar el monto neto pendiente                                       | 3319            |
+| El monto neto pendiente no puede ser mayor al importe total (sí puede ser menor)     | 3265            |
+| El vencimiento de cada cuota debe ser **posterior** a la fecha de emisión (no igual) | 3267            |
+| Máximo 60 cuotas (límite de SOL)                                                     | —               |
+| El orden de las cuotas no importa (SUNAT acepta fechas desordenadas)                 | —               |
 
 Estructura del XML según el anexo 9-A de la RS 193-2020/SUNAT y la guía XML de factura UBL 2.1: `cac:PaymentTerms` con
 `FormaPago`/`Credito` y el monto, más una línea `Cuota001`, `Cuota002`… con monto y `PaymentDueDate`;
@@ -167,7 +171,8 @@ en el CDR"). Esa misma URL entrega el **PDF oficial** de la guía, así que no h
 const sent = await client.sendDespatch(prepared, { downloadPdf: true });
 if (sent.status === 'accepted' || sent.status === 'accepted_with_observations') {
   save(sent.cdrZip); // el CDR es el sustento del traslado
-  if (sent.pdf) save(sent.pdf.pdf, sent.pdf.fileName); // PDF oficial (Uint8Array)
+  if (sent.pdf)
+    save(sent.pdf.pdf, sent.pdf.fileName); // PDF oficial (Uint8Array)
   else console.warn(sent.pdfError); // la guía quedó aceptada; reintenta luego con downloadDespatchPdf(sent.cdr.qrUrl)
   const qrText = sent.cdr.qrUrl; // codifícalo en un QR con la librería de tu app (el SDK no dibuja el QR)
 }
@@ -212,12 +217,12 @@ import { SunatApiError } from '@alonso804/sunat-sdk'; // los errores son las cla
 
 const result = await consultRuc('20539579356');
 if (result.status === RucConsultStatus.found) {
-  result.legalName;          // "EMPRESA DE TRANSPORTES PERU BUS KLEY S.A.C." (razón social)
-  result.tradeName;          // Nombre comercial (si está registrado)
-  result.taxpayerStatus;     // Estado del contribuyente: ACTIVO, BAJA DE OFICIO…
-  result.taxpayerCondition;  // Condición del contribuyente: HABIDO, NO HABIDO…
-  result.fiscalAddress;      // Domicilio fiscal
-  result.mainActivity;       // { code: '4921', description: 'TRANSPORTE …' } (CIIU Rev. 4, la actividad principal)
+  result.legalName; // "EMPRESA DE TRANSPORTES PERU BUS KLEY S.A.C." (razón social)
+  result.tradeName; // Nombre comercial (si está registrado)
+  result.taxpayerStatus; // Estado del contribuyente: ACTIVO, BAJA DE OFICIO…
+  result.taxpayerCondition; // Condición del contribuyente: HABIDO, NO HABIDO…
+  result.fiscalAddress; // Domicilio fiscal
+  result.mainActivity; // { code: '4921', description: 'TRANSPORTE …' } (CIIU Rev. 4, la actividad principal)
 }
 ```
 
@@ -266,10 +271,10 @@ Es de **solo lectura** y **no necesita certificado ni credenciales**: hace el mi
 new SunatClient({ /* … */ retry: { maxRetries: 3, delayMs: 1000 } }); // `{ maxRetries: 0 }` los desactiva
 ```
 
-| Llamada | Se reintenta si… |
-|---|---|
-| `sendInvoice`, `sendDespatch` (envíos) | SUNAT **con seguridad no procesó** la petición: el proxy respondió `401` (peticiones muy seguidas), `429` o `503`, o la conexión no llegó a abrirse (DNS, conexión rechazada). |
-| Token de la API, `getInvoiceStatus`, `getDespatchStatus` (lecturas) | cualquier fallo pasajero: red, espera agotada, `408`, `429`, `5xx`. |
+| Llamada                                                             | Se reintenta si…                                                                                                                                                               |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `sendInvoice`, `sendDespatch` (envíos)                              | SUNAT **con seguridad no procesó** la petición: el proxy respondió `401` (peticiones muy seguidas), `429` o `503`, o la conexión no llegó a abrirse (DNS, conexión rechazada). |
+| Token de la API, `getInvoiceStatus`, `getDespatchStatus` (lecturas) | cualquier fallo pasajero: red, espera agotada, `408`, `429`, `5xx`.                                                                                                            |
 
 Un envío **no** se reintenta si la petición pudo haber llegado (corte a mitad, espera agotada, `500`, `502`, `504`):
 SUNAT pudo haberla procesado, así que el error llega a tu código para que consultes el estado (`getInvoiceStatus`)
@@ -327,9 +332,11 @@ Verificadas contra el texto de la resolución y sus anexos 12 y 14 (campos, cond
 Plan por etapas (el paquete no depende de cómo viva el repositorio):
 
 1. **Desarrollo: enlace local.** En el proyecto que lo consume:
+
    ```bash
    pnpm add link:../sunat-sdk   # crea "@alonso804/sunat-sdk": "link:../sunat-sdk"
    ```
+
    y en este repo `pnpm dev` (tsup en modo watch) para que `dist/` se mantenga al día.
 2. **Servidor / CI: GitHub Packages (privado).** El paquete se llama `@alonso804/sunat-sdk` (GitHub exige que el scope
    sea el del dueño). El nombre sin scope `sunat-sdk` **ya existe en el npm público** (otro autor): no se puede publicar
@@ -337,10 +344,10 @@ Plan por etapas (el paquete no depende de cómo viva el repositorio):
    `publishConfig.registry = https://npm.pkg.github.com` y `access: restricted`, así que nunca sube al npm público.
    - **Publicar** (una vez por versión; antes se corre `pnpm prepublishOnly`, que hace typecheck, pruebas y build):
      `pnpm publish`. Requiere en tu `~/.npmrc` (fuera del repo) la línea
-     `//npm.pkg.github.com/:_authToken=<PAT classic con write:packages>`. *(Aún no se ha publicado ninguna versión: este
-     procedimiento sigue la documentación de GitHub y falta comprobarlo.)*
+     `//npm.pkg.github.com/:_authToken=<PAT classic con write:packages>`. _(Aún no se ha publicado ninguna versión: este
+     procedimiento sigue la documentación de GitHub y falta comprobarlo.)_
    - **Consumir**: en el proyecto de la app, un `.npmrc` con `@alonso804:registry=https://npm.pkg.github.com` y
-     `//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}` (PAT *classic* con `read:packages`; no se sube a git).
+     `//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}` (PAT _classic_ con `read:packages`; no se sube a git).
 3. **Plan B: monorepo.** Mover esta carpeta a `packages/sunat-sdk` y consumirla con `"@alonso804/sunat-sdk": "workspace:*"`
    (sin registro ni tokens).
 
@@ -358,26 +365,26 @@ Plan por etapas (el paquete no depende de cómo viva el repositorio):
 
 ## Scripts
 
-| Comando | Qué hace |
-|---|---|
-| `pnpm test` | pruebas unitarias (sin red) |
-| `pnpm check` | Biome: formato, linter y orden de imports (no modifica nada; también corre antes de publicar) |
-| `pnpm check:fix` | Biome: aplica el formato, el orden de imports y los arreglos seguros del linter |
-| `pnpm test:beta` | pruebas contra SUNAT beta (red, sin efecto tributario) |
-| `pnpm tsx scripts/beta-smoke.ts` | envía una factura de prueba a beta |
-| `pnpm tsx scripts/beta-faults.ts [a b c d e ok]` | envía XML defectuosos a propósito para ver errores reales |
-| `pnpm tsx scripts/beta-matrix.ts 25 7` | lote de facturas aleatorias (cantidad, semilla) |
-| `pnpm tsx --env-file=.env scripts/inspect-cert.ts` | revisa tu `.p12` (titular, vigencia, llave) y prueba firmar; no envía nada |
-| `pnpm tsx --env-file=.env scripts/gre-prod-check.ts plan` | guía de prueba sin red: arma, firma y valida contra el XSD |
-| `… gre-prod-check.ts auth` | solo pide el token (no crea documentos) |
-| `… gre-prod-check.ts negative` | envía una guía **alterada** que SUNAT debe rechazar (no deja registro) |
-| `… gre-prod-check.ts positive` | emite **una** guía de prueba REAL con confirmación escrita (dar de baja en SOL) |
-| `pnpm tsx --env-file=.env scripts/invoice-prod-check.ts [serie] [número]` | consulta de **solo lectura** (`getStatusCdr`): prueba usuario, clave y permiso de consulta en producción |
-| `… invoice-prod-send.ts out/factura.json plan` | factura sin red: valida, calcula, firma y muestra el resumen (ver `scripts/examples/invoice.example.json`) |
-| `… invoice-prod-send.ts out/factura.json status` | solo lectura: ¿ya existe esa serie y número en SUNAT? (úsalo tras un error de red) |
-| `… invoice-prod-send.ts out/factura.json send` | emite **una factura REAL**: comprueba que el número esté libre y pide escribir `ENVIAR <nombre>` |
-| `pnpm tsx scripts/ruc-consult.ts <RUC…> [--dump]` | consulta pública (sin credenciales) de los datos publicados de uno o varios RUC, vía curl; con `--dump` guarda el HTML devuelto en `out/` |
-| `pnpm build` | genera `dist/` (ESM, CJS y tipos) |
+| Comando                                                                   | Qué hace                                                                                                                                  |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm test`                                                               | pruebas unitarias (sin red)                                                                                                               |
+| `pnpm check`                                                              | Biome: formato, linter y orden de imports (no modifica nada; también corre antes de publicar)                                             |
+| `pnpm check:fix`                                                          | Biome: aplica el formato, el orden de imports y los arreglos seguros del linter                                                           |
+| `pnpm test:beta`                                                          | pruebas contra SUNAT beta (red, sin efecto tributario)                                                                                    |
+| `pnpm tsx scripts/beta-smoke.ts`                                          | envía una factura de prueba a beta                                                                                                        |
+| `pnpm tsx scripts/beta-faults.ts [a b c d e ok]`                          | envía XML defectuosos a propósito para ver errores reales                                                                                 |
+| `pnpm tsx scripts/beta-matrix.ts 25 7`                                    | lote de facturas aleatorias (cantidad, semilla)                                                                                           |
+| `pnpm tsx --env-file=.env scripts/inspect-cert.ts`                        | revisa tu `.p12` (titular, vigencia, llave) y prueba firmar; no envía nada                                                                |
+| `pnpm tsx --env-file=.env scripts/gre-prod-check.ts plan`                 | guía de prueba sin red: arma, firma y valida contra el XSD                                                                                |
+| `… gre-prod-check.ts auth`                                                | solo pide el token (no crea documentos)                                                                                                   |
+| `… gre-prod-check.ts negative`                                            | envía una guía **alterada** que SUNAT debe rechazar (no deja registro)                                                                    |
+| `… gre-prod-check.ts positive`                                            | emite **una** guía de prueba REAL con confirmación escrita (dar de baja en SOL)                                                           |
+| `pnpm tsx --env-file=.env scripts/invoice-prod-check.ts [serie] [número]` | consulta de **solo lectura** (`getStatusCdr`): prueba usuario, clave y permiso de consulta en producción                                  |
+| `… invoice-prod-send.ts out/factura.json plan`                            | factura sin red: valida, calcula, firma y muestra el resumen (ver `scripts/examples/invoice.example.json`)                                |
+| `… invoice-prod-send.ts out/factura.json status`                          | solo lectura: ¿ya existe esa serie y número en SUNAT? (úsalo tras un error de red)                                                        |
+| `… invoice-prod-send.ts out/factura.json send`                            | emite **una factura REAL**: comprueba que el número esté libre y pide escribir `ENVIAR <nombre>`                                          |
+| `pnpm tsx scripts/ruc-consult.ts <RUC…> [--dump]`                         | consulta pública (sin credenciales) de los datos publicados de uno o varios RUC, vía curl; con `--dump` guarda el HTML devuelto en `out/` |
+| `pnpm build`                                                              | genera `dist/` (ESM, CJS y tipos)                                                                                                         |
 
 ## Seguridad
 

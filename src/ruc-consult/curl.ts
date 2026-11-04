@@ -51,7 +51,9 @@ export function curlFetch(options: CurlFetchOptions = {}): typeof fetch {
       const stdout: Buffer[] = [];
       let stderr = '';
       child.stdout?.on('data', (chunk: Buffer) => stdout.push(chunk));
-      child.stderr?.setEncoding('utf8').on('data', (chunk: string) => (stderr = stderr.length > 1_000 ? stderr : stderr + chunk));
+      child.stderr
+        ?.setEncoding('utf8')
+        .on('data', (chunk: string) => (stderr = stderr.length > 1_000 ? stderr : stderr + chunk));
       if (init.signal) init.signal.addEventListener('abort', () => child.kill(), { once: true });
       child.on('error', (error) => reject(new TypeError(`${executable}: ${error.message}`)));
       child.on('close', (code) => {
@@ -75,9 +77,18 @@ const HEADER_BODY_GAP = '\r\n\r\n';
 /** Nombres de cabecera en su mayúscula conocida: Cloudflare puntúa el estilo de la cabecera como navegador
  *  ( revision del 04/11/2026: nombres en minúscula — como los normaliza Headers de fetch — reciben el desafío). */
 const CANONICAL_NAMES: Record<string, string> = {
-  accept: 'Accept', 'accept-language': 'Accept-Language', 'content-type': 'Content-Type',
-  'content-length': 'Content-Length', 'user-agent': 'User-Agent', referer: 'Referer', host: 'Host',
-  cookie: 'Cookie', connection: 'Connection', origin: 'Origin', 'accept-encoding': 'Accept-Encoding', date: 'Date',
+  accept: 'Accept',
+  'accept-language': 'Accept-Language',
+  'content-type': 'Content-Type',
+  'content-length': 'Content-Length',
+  'user-agent': 'User-Agent',
+  referer: 'Referer',
+  host: 'Host',
+  cookie: 'Cookie',
+  connection: 'Connection',
+  origin: 'Origin',
+  'accept-encoding': 'Accept-Encoding',
+  date: 'Date',
 };
 
 /** Canoniza el nombre de una cabecera (diccionario conocido; para lo demás, cada tramo con mayúscula). */

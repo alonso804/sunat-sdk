@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import forge from 'node-forge';
 import { strToU8 } from 'fflate';
+import forge from 'node-forge';
 import type { DespatchInput, InvoiceInput, IssuerInput } from '../src';
 import type { SigningKey } from '../src/signing/certificate';
 import { zipSingleFile } from '../src/zip';
@@ -90,7 +90,9 @@ export function cdrZipBase64(baseName: string, cdr: string): string {
   return Buffer.from(zipSingleFile(`R-${baseName}.xml`, strToU8(cdr))).toString('base64');
 }
 
-let cached: { key: SigningKey; pfx: Uint8Array; privateKey: forge.pki.rsa.PrivateKey; cert: forge.pki.Certificate } | undefined;
+let cached:
+  | { key: SigningKey; pfx: Uint8Array; privateKey: forge.pki.rsa.PrivateKey; cert: forge.pki.Certificate }
+  | undefined;
 
 /** Certificado autofirmado de prueba (se genera una sola vez por proceso de test). */
 export function testCertificate() {

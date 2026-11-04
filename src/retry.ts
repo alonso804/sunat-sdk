@@ -15,7 +15,14 @@ const DEFAULT_DELAY_MS = 1_000;
  * Códigos de Node/undici que indican que la conexión no llegó a abrirse: la petición nunca salió.
  * (Un corte con la petición ya enviada llega como `UND_ERR_SOCKET` o como espera agotada, y NO está aquí.)
  */
-const NOT_SENT_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH', 'UND_ERR_CONNECT_TIMEOUT']);
+const NOT_SENT_CODES = new Set([
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'UND_ERR_CONNECT_TIMEOUT',
+]);
 
 function failedToConnect(error: unknown): boolean {
   let cause: unknown = error;

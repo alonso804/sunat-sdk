@@ -12,11 +12,15 @@ import {
   TransportMode,
 } from '../src';
 import { RucConsultStatus } from '../src/ruc-consult';
-import { TEST_ISSUER, sampleDespatch, sampleInvoice, testCertificate } from './helpers';
+import { sampleDespatch, sampleInvoice, TEST_ISSUER, testCertificate } from './helpers';
 
 describe('estados `as const` (objeto y tipo con el mismo nombre)', () => {
   it('conservan los textos de siempre: comparar con el string sigue funcionando', () => {
-    expect(SendInvoiceStatus).toEqual({ accepted: 'accepted', acceptedWithObservations: 'accepted_with_observations', rejected: 'rejected' });
+    expect(SendInvoiceStatus).toEqual({
+      accepted: 'accepted',
+      acceptedWithObservations: 'accepted_with_observations',
+      rejected: 'rejected',
+    });
     expect(DespatchStatus).toEqual({
       accepted: 'accepted',
       acceptedWithObservations: 'accepted_with_observations',
@@ -40,7 +44,13 @@ describe('estados `as const` (objeto y tipo con el mismo nombre)', () => {
     const ruc: RucConsultStatus = RucConsultStatus.notFound;
     // @ts-expect-error 'pending' no es un estado de factura
     const invalid: SendInvoiceStatus = 'pending';
-    expect([send, despatch, kind, ruc, invalid]).toEqual(['accepted_with_observations', 'pending', 'rejected', 'not_found', 'pending']);
+    expect([send, despatch, kind, ruc, invalid]).toEqual([
+      'accepted_with_observations',
+      'pending',
+      'rejected',
+      'not_found',
+      'pending',
+    ]);
   });
 });
 
@@ -62,7 +72,10 @@ describe('opciones `as const` (objeto y tipo con el mismo nombre)', () => {
       signatureAlgorithm: SignatureAlgorithm.sha256,
     });
     const invoice = client.prepareInvoice(
-      sampleInvoice({ currency: Currency.USD, payment: { type: PaymentType.credit, installments: [{ dueDate: '2026-12-31' }] } }),
+      sampleInvoice({
+        currency: Currency.USD,
+        payment: { type: PaymentType.credit, installments: [{ dueDate: '2026-12-31' }] },
+      }),
     );
     expect(invoice.summary.currency).toBe(Currency.USD);
     expect(invoice.summary.payment.type).toBe(PaymentType.credit);
@@ -79,7 +92,12 @@ describe('opciones `as const` (objeto y tipo con el mismo nombre)', () => {
     const invalid: Currency = 'EUR';
     expect([env, currency, invalid]).toEqual(['production', 'PEN', 'EUR']);
 
-    const client = new SunatClient({ environment: Environment.beta, issuer: TEST_ISSUER, sol: { user: 'U', password: 'P' }, signingKey: testCertificate().key });
+    const client = new SunatClient({
+      environment: Environment.beta,
+      issuer: TEST_ISSUER,
+      sol: { user: 'U', password: 'P' },
+      signingKey: testCertificate().key,
+    });
     // @ts-expect-error 'EUR' no es una moneda admitida
     expect(() => client.prepareInvoice(sampleInvoice({ currency: 'EUR' }))).toThrow(/currency/);
   });

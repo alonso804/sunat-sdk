@@ -1,8 +1,8 @@
 import { SunatApiError, SunatTransportError, SunatValidationError } from '../errors';
-import { isRetryableRead, withRetries, type RetryOptions } from '../retry';
+import { isRetryableRead, type RetryOptions, withRetries } from '../retry';
 import { isValidRuc } from '../ruc';
-import { parseRucPage, RucPageError, type RucConsultResult } from './parse';
 import { curlFetch, isCurlAvailable } from './curl';
+import { parseRucPage, type RucConsultResult, RucPageError } from './parse';
 
 export type RucConsultOptions = {
   /** Para pruebas o proxies. Por defecto el `fetch` global. */
@@ -35,7 +35,8 @@ const RUC_CONSULT_URL = 'https://e-consultaruc.sunat.gob.pe/cl-ti-itmrconsruc/jc
 const RUC_CONSULT_REFERER = 'https://e-consultaruc.sunat.gob.pe/cl-ti-itmrconsruc/FrameCriterioBusquedaWeb.jsp';
 /** Cabeceras con las que el formulario hace su POST (navegador, sin cookies). */
 const BROWSER_HEADERS: Record<string, string> = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36',
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36',
   Referer: RUC_CONSULT_REFERER,
   'Content-Type': 'application/x-www-form-urlencoded',
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -121,7 +122,13 @@ async function fetchRucPage(ruc: string, options: RucConsultOptions): Promise<Ru
         page.slice(0, 1_000),
       );
     }
-    throw new SunatApiError(`SUNAT respondió HTTP ${response.status} en la consulta del RUC.`, response.status, undefined, [], page.slice(0, 1_000));
+    throw new SunatApiError(
+      `SUNAT respondió HTTP ${response.status} en la consulta del RUC.`,
+      response.status,
+      undefined,
+      [],
+      page.slice(0, 1_000),
+    );
   }
   options.onPage?.(page);
   return parseRucPage(page, ruc);

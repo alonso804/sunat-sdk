@@ -4,8 +4,8 @@
  *
  *   pnpm tsx scripts/beta-matrix.ts [cantidad=15] [semilla=1]
  */
-import { SunatClient, SunatFaultError, SunatTransportError, type InvoiceInput } from '../src';
-import { TEST_ISSUER, sampleInvoice, testCertificate } from '../test/helpers';
+import { type InvoiceInput, SunatClient, SunatFaultError, SunatTransportError } from '../src';
+import { sampleInvoice, TEST_ISSUER, testCertificate } from '../test/helpers';
 
 const count = Number(process.argv[2] ?? 15);
 let seed = Number(process.argv[3] ?? 1);
@@ -69,7 +69,9 @@ for (let i = 1; i <= count; i++) {
     const result = await client.sendInvoice(prepared);
     if (result.status === 'accepted' || result.status === 'accepted_with_observations') {
       ok++;
-      console.log(`✔ ${label}${result.status === 'accepted_with_observations' ? ` (obs: ${result.cdr.notes.join(' | ')})` : ''}`);
+      console.log(
+        `✔ ${label}${result.status === 'accepted_with_observations' ? ` (obs: ${result.cdr.notes.join(' | ')})` : ''}`,
+      );
     } else {
       failures.push(label);
       console.log(`✘ ${label}\n    ${result.code}: ${result.message}`);

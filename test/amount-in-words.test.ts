@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { dec } from '../src/money';
 import { amountInWords, integerToWords } from '../src/amount-in-words';
+import { dec } from '../src/money';
 
 describe('integerToWords', () => {
   it.each([

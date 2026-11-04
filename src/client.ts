@@ -1,27 +1,34 @@
-import { readCdrFromApplicationResponse, type Cdr } from './cdr';
+import { amountInWords } from './amount-in-words';
+import type { Currency } from './catalogs';
+import { type Cdr, readCdrFromApplicationResponse } from './cdr';
 import { ENDPOINTS, type Environment } from './config';
 import type { DespatchInput } from './despatch/schema';
 import {
-  DespatchStatus,
-  prepareDespatch,
-  waitForDespatch,
   type DespatchResult,
   type DespatchSendOptions,
+  DespatchStatus,
   type PreparedDespatch,
+  prepareDespatch,
+  waitForDespatch,
 } from './despatch/service';
 import { SunatApiError, SunatError, SunatFaultError, SunatFaultKind, SunatValidationError } from './errors';
 import { getTicketStatus, postDespatch, requestToken, type Token } from './gre/api';
-import { downloadDespatchPdf, type DespatchPdf, type DespatchPdfOptions } from './gre/pdf';
+import { type DespatchPdf, type DespatchPdfOptions, downloadDespatchPdf } from './gre/pdf';
 import { calculateInvoice } from './invoice/calculate';
 import { resolvePayment } from './invoice/payment';
-import type { Currency } from './catalogs';
-import { InvoiceSchema, IssuerSchema, PaymentType, type InvoiceInput, type Issuer, type IssuerInput } from './invoice/schema';
+import {
+  type InvoiceInput,
+  InvoiceSchema,
+  type Issuer,
+  type IssuerInput,
+  IssuerSchema,
+  PaymentType,
+} from './invoice/schema';
 import { buildInvoiceXml, invoiceBaseName } from './invoice/xml';
 import { fmt2, fmtUpTo } from './money';
-import { amountInWords } from './amount-in-words';
+import { isRetryableRead, isSafeToResend, type RetryOptions, withRetries } from './retry';
 import type { SigningKey } from './signing/certificate';
 import { extractDigestValue, SignatureAlgorithm, signUblXml } from './signing/xmldsig';
-import { isRetryableRead, isSafeToResend, withRetries, type RetryOptions } from './retry';
 import { getStatusCdr, sendBill } from './soap/bill-service';
 import { TextCharset, toLatin1Deep } from './text-charset';
 import { toValidationError } from './validation';
@@ -88,7 +95,11 @@ export type InvoiceSummary = {
   /** Forma de pago ya resuelta: en crédito, el monto neto pendiente (por defecto el total) y las cuotas con su monto. */
   payment:
     | { type: typeof PaymentType.cash }
-    | { type: typeof PaymentType.credit; netPending: string; installments: Array<{ number: number; dueDate: string; amount: string }> };
+    | {
+        type: typeof PaymentType.credit;
+        netPending: string;
+        installments: Array<{ number: number; dueDate: string; amount: string }>;
+      };
   purchaseOrder?: string;
   relatedDespatches: Array<{ type: '09' | '31'; number: string }>;
 };
@@ -253,7 +264,11 @@ export class SunatClient {
     const calculation = calculateInvoice(invoice);
     const payment = resolvePayment(invoice.payment, calculation.totals.payable, limaDateTime(issuedAt).date);
     const unsignedXml = buildInvoiceXml({ issuer: this.issuer, invoice, calculation, payment, issuedAt });
-    const signedXml = signUblXml(unsignedXml, this.config.signingKey, this.config.signatureAlgorithm ?? SignatureAlgorithm.sha1);
+    const signedXml = signUblXml(
+      unsignedXml,
+      this.config.signingKey,
+      this.config.signatureAlgorithm ?? SignatureAlgorithm.sha1,
+    );
     const { totals } = calculation;
 
     return {
@@ -285,7 +300,11 @@ export class SunatClient {
             : {
                 type: PaymentType.credit,
                 netPending: fmt2(payment.netPending),
-                installments: payment.installments.map((i) => ({ number: i.number, dueDate: i.dueDate, amount: fmt2(i.amount) })),
+                installments: payment.installments.map((i) => ({
+                  number: i.number,
+                  dueDate: i.dueDate,
+                  amount: fmt2(i.amount),
+                })),
               },
         ...(invoice.purchaseOrder ? { purchaseOrder: invoice.purchaseOrder } : {}),
         relatedDespatches: invoice.relatedDespatches.map((d) => ({ type: d.type, number: `${d.series}-${d.number}` })),
@@ -384,11 +403,13 @@ export class SunatClient {
     const series = query.series.trim().toUpperCase();
     const issues: Array<{ path: string; message: string }> = [];
     if (!['01', '07', '08'].includes(type)) issues.push({ path: 'type', message: 'Debe ser 01, 07 u 08' });
-    if (!/^[A-Z0-9]{4}$/.test(series)) issues.push({ path: 'series', message: 'Debe tener 4 caracteres (letras o números)' });
+    if (!/^[A-Z0-9]{4}$/.test(series))
+      issues.push({ path: 'series', message: 'Debe tener 4 caracteres (letras o números)' });
     if (!Number.isInteger(query.number) || query.number < 1 || query.number > 99_999_999) {
       issues.push({ path: 'number', message: 'Debe ser un entero entre 1 y 99999999' });
     }
-    if (issues.length > 0) throw new SunatValidationError('Los datos del comprobante a consultar no son válidos.', issues);
+    if (issues.length > 0)
+      throw new SunatValidationError('Los datos del comprobante a consultar no son válidos.', issues);
 
     const endpoint = ENDPOINTS[this.config.environment].consultService;
     if (!endpoint) {
@@ -548,9 +569,11 @@ export class SunatClient {
   /** Baja el PDF oficial de una guía aceptada sin convertir un fallo de descarga en un error del envío. */
   private async attachPdf(result: DespatchResult, enabled: boolean | undefined): Promise<DespatchResult> {
     if (!enabled) return result;
-    if (result.status !== DespatchStatus.accepted && result.status !== DespatchStatus.acceptedWithObservations) return result;
+    if (result.status !== DespatchStatus.accepted && result.status !== DespatchStatus.acceptedWithObservations)
+      return result;
     const qrUrl = result.cdr.qrUrl;
-    if (!qrUrl) return { ...result, pdfError: new SunatError('El CDR no trae la URL del QR; no hay PDF que descargar.') };
+    if (!qrUrl)
+      return { ...result, pdfError: new SunatError('El CDR no trae la URL del QR; no hay PDF que descargar.') };
     try {
       return { ...result, pdf: await this.downloadDespatchPdf(qrUrl) };
     } catch (error) {

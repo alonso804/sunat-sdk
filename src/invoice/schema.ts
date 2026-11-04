@@ -21,7 +21,10 @@ const addressShape = {
   /** Urbanización (opcional, hasta 100 caracteres). */
   urbanization: z.string().max(100).optional(),
   /** Código del establecimiento anexo; "0000" es el domicilio fiscal. */
-  establishmentCode: z.string().regex(/^\d{4}$/).default('0000'),
+  establishmentCode: z
+    .string()
+    .regex(/^\d{4}$/)
+    .default('0000'),
   /** Código de país ISO 3166-1 de 2 letras. */
   countryCode: z
     .string()
@@ -139,7 +142,10 @@ export const InvoicePaymentSchema = z.discriminatedUnion('type', [CashPaymentSch
 
 const relatedDespatchShape = {
   /** Serie de la guía, p. ej. "T001" (o "EG07" si se emitió en SOL). */
-  series: z.string().transform((v) => v.trim().toUpperCase()).pipe(z.string().regex(/^[A-Z0-9]{4}$/, 'La serie debe tener 4 caracteres')),
+  series: z
+    .string()
+    .transform((v) => v.trim().toUpperCase())
+    .pipe(z.string().regex(/^[A-Z0-9]{4}$/, 'La serie debe tener 4 caracteres')),
   /** Correlativo de la guía (1 a 99 999 999). */
   number: z.number().int().min(1).max(99_999_999),
   /** Catálogo 01: 09 = guía de remisión remitente (por defecto), 31 = guía de remisión transportista. */

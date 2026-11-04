@@ -3,7 +3,7 @@
  *   pnpm tsx scripts/beta-encoding.ts
  */
 import { SunatClient } from '../src';
-import { TEST_ISSUER, sampleInvoice, testCertificate } from '../test/helpers';
+import { sampleInvoice, TEST_ISSUER, testCertificate } from '../test/helpers';
 
 const client = new SunatClient({
   environment: 'beta',
@@ -21,10 +21,14 @@ const cases: Array<[string, string]> = [
 let n = Math.floor(Date.now() / 1000) % 98_000_000;
 for (const [label, description] of cases) {
   await new Promise((r) => setTimeout(r, 2500));
-  const prepared = client.prepareInvoice(sampleInvoice({ number: ++n, issuedAt: new Date(), items: [{ description, quantity: 1, unitPrice: 11.8 }] }));
+  const prepared = client.prepareInvoice(
+    sampleInvoice({ number: ++n, issuedAt: new Date(), items: [{ description, quantity: 1, unitPrice: 11.8 }] }),
+  );
   try {
     const result = await client.sendInvoice(prepared);
-    console.log(`${label.padEnd(30)} → ${result.status}${result.status === 'rejected' ? ` ${result.code}: ${result.message}` : ''}`);
+    console.log(
+      `${label.padEnd(30)} → ${result.status}${result.status === 'rejected' ? ` ${result.code}: ${result.message}` : ''}`,
+    );
   } catch (error) {
     console.log(`${label.padEnd(30)} → ERROR ${(error as Error).message}`);
   }

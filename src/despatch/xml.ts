@@ -1,12 +1,12 @@
 import {
   DESPATCH_INDICATORS,
+  type IdentityType,
   RELATED_DOCUMENT_TYPES,
   TRANSPORT_MODE,
   TransportMode,
-  type IdentityType,
 } from '../catalogs';
-import { dec, fmtFixed, fmtUpTo } from '../money';
 import type { Issuer } from '../invoice/schema';
+import { dec, fmtFixed, fmtUpTo } from '../money';
 import { escapeXml as esc, limaDateTime, SIGNATURE_ID, singleLine } from '../xml';
 import type { Despatch, DespatchItem } from './schema';
 
@@ -21,7 +21,8 @@ const NAMESPACES = [
   'xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"',
 ].join(' ');
 
-const SCHEME_ATTRS = 'schemeName="Documento de Identidad" schemeAgencyName="PE:SUNAT" schemeURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo06"';
+const SCHEME_ATTRS =
+  'schemeName="Documento de Identidad" schemeAgencyName="PE:SUNAT" schemeURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo06"';
 
 export type ResolvedParty = {
   docType: IdentityType;
@@ -43,15 +44,13 @@ function partyBlock(tag: string, party: ResolvedParty): string {
   );
 }
 
-function address(
-  wrapper: 'DeliveryAddress' | 'DespatchAddress',
-  point: Despatch['origin'],
-  ownerRuc: string,
-): string {
+function address(wrapper: 'DeliveryAddress' | 'DespatchAddress', point: Despatch['origin'], ownerRuc: string): string {
   return (
     `<cac:${wrapper}>` +
     `<cbc:ID schemeAgencyName="PE:INEI" schemeName="Ubigeos">${point.ubigeo}</cbc:ID>` +
-    (point.establishmentCode ? `<cbc:AddressTypeCode listID="${ownerRuc}">${point.establishmentCode}</cbc:AddressTypeCode>` : '') +
+    (point.establishmentCode
+      ? `<cbc:AddressTypeCode listID="${ownerRuc}">${point.establishmentCode}</cbc:AddressTypeCode>`
+      : '') +
     `<cac:AddressLine><cbc:Line>${esc(singleLine(point.address))}</cbc:Line></cac:AddressLine>` +
     `</cac:${wrapper}>`
   );
@@ -65,8 +64,12 @@ function despatchLine(item: DespatchItem, index: number): string {
     `<cac:OrderLineReference><cbc:LineID>${index}</cbc:LineID></cac:OrderLineReference>` +
     '<cac:Item>' +
     `<cbc:Description>${esc(singleLine(item.description))}</cbc:Description>` +
-    (item.code ? `<cac:SellersItemIdentification><cbc:ID>${esc(item.code)}</cbc:ID></cac:SellersItemIdentification>` : '') +
-    (item.gtin ? `<cac:StandardItemIdentification><cbc:ID>${item.gtin}</cbc:ID></cac:StandardItemIdentification>` : '') +
+    (item.code
+      ? `<cac:SellersItemIdentification><cbc:ID>${esc(item.code)}</cbc:ID></cac:SellersItemIdentification>`
+      : '') +
+    (item.gtin
+      ? `<cac:StandardItemIdentification><cbc:ID>${item.gtin}</cbc:ID></cac:StandardItemIdentification>`
+      : '') +
     (item.sunatProductCode
       ? `<cac:CommodityClassification><cbc:ItemClassificationCode listID="UNSPSC" listAgencyName="GS1 US" listName="Item Classification">${item.sunatProductCode}</cbc:ItemClassificationCode></cac:CommodityClassification>`
       : '') +
@@ -173,9 +176,13 @@ export function buildDespatchXml(params: {
     '<cac:Shipment>' +
     '<cbc:ID>SUNAT_Envio</cbc:ID>' +
     `<cbc:HandlingCode listAgencyName="PE:SUNAT" listName="Motivo de traslado" listURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo20">${d.reason}</cbc:HandlingCode>` +
-    (d.reason === '13' && d.reasonDescription ? `<cbc:HandlingInstructions>${esc(singleLine(d.reasonDescription))}</cbc:HandlingInstructions>` : '') +
+    (d.reason === '13' && d.reasonDescription
+      ? `<cbc:HandlingInstructions>${esc(singleLine(d.reasonDescription))}</cbc:HandlingInstructions>`
+      : '') +
     `<cbc:GrossWeightMeasure unitCode="${d.grossWeight.unit}">${fmtFixed(dec(d.grossWeight.value), 3)}</cbc:GrossWeightMeasure>` +
-    (d.packages ? `<cbc:TotalTransportHandlingUnitQuantity>${d.packages}</cbc:TotalTransportHandlingUnitQuantity>` : '') +
+    (d.packages
+      ? `<cbc:TotalTransportHandlingUnitQuantity>${d.packages}</cbc:TotalTransportHandlingUnitQuantity>`
+      : '') +
     indicators.map((value) => `<cbc:SpecialInstructions>${value}</cbc:SpecialInstructions>`).join('') +
     '<cac:ShipmentStage>' +
     `<cbc:TransportModeCode listName="Modalidad de traslado" listAgencyName="PE:SUNAT" listURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo18">${TRANSPORT_MODE[d.transportMode]}</cbc:TransportModeCode>` +

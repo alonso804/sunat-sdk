@@ -9,16 +9,16 @@ lo marcado **(no verificado)** viene de documentación o de memoria y puede habe
 
 ## Resumen: de dónde sale cada variable
 
-| Variable del `.env`             | De dónde sale                                                              |
-| ------------------------------- | -------------------------------------------------------------------------- |
-| `GRE_CLIENT_ID`                 | SOL → Credenciales de API SUNAT → campo **ID** de la aplicación            |
-| `GRE_CLIENT_SECRET`             | SOL → Credenciales de API SUNAT → campo **CLAVE** de la aplicación         |
-| `SUNAT_SOL_USER`                | El usuario secundario que se crea (8 caracteres exactos, ej. `SDKUSR01`)    |
-| `SUNAT_SOL_PASSWORD`            | La clave que tú escribes al crear el usuario secundario (8 a 12 caracteres) |
-| `SUNAT_RUC`                     | RUC del negocio                                                            |
-| `SUNAT_LEGAL_NAME`              | Razón social tal como figura en la Ficha RUC                               |
-| `SUNAT_UBIGEO` y `..._ADDRESS`  | Domicilio fiscal, de la Ficha RUC                                          |
-| `SUNAT_CERT_PATH` / `..._PASSWORD` | Certificado Digital Tributario (`.p12`) y su contraseña                  |
+| Variable del `.env`                | De dónde sale                                                               |
+| ---------------------------------- | --------------------------------------------------------------------------- |
+| `GRE_CLIENT_ID`                    | SOL → Credenciales de API SUNAT → campo **ID** de la aplicación             |
+| `GRE_CLIENT_SECRET`                | SOL → Credenciales de API SUNAT → campo **CLAVE** de la aplicación          |
+| `SUNAT_SOL_USER`                   | El usuario secundario que se crea (8 caracteres exactos, ej. `SDKUSR01`)    |
+| `SUNAT_SOL_PASSWORD`               | La clave que tú escribes al crear el usuario secundario (8 a 12 caracteres) |
+| `SUNAT_RUC`                        | RUC del negocio                                                             |
+| `SUNAT_LEGAL_NAME`                 | Razón social tal como figura en la Ficha RUC                                |
+| `SUNAT_UBIGEO` y `..._ADDRESS`     | Domicilio fiscal, de la Ficha RUC                                           |
+| `SUNAT_CERT_PATH` / `..._PASSWORD` | Certificado Digital Tributario (`.p12`) y su contraseña                     |
 
 Usa `.env.example` como plantilla. Los valores con espacios o símbolos (`#`, `$`, comillas) van entre comillas.
 
@@ -26,7 +26,7 @@ Usa `.env.example` como plantilla. Los valores con espacios o símbolos (`#`, `$
 
 1. Entra a SOL con la **Clave SOL del titular** (RUC + usuario principal).
 2. Menú **Empresas → Credenciales de API SUNAT → Gestión Credenciales de API SUNAT**. **(verificado)**
-   También aparece en *Favoritos → Últimos accesos* cuando ya la abriste antes.
+   También aparece en _Favoritos → Últimos accesos_ cuando ya la abriste antes.
 3. Si **no hay aplicación**: usa la opción de registrar/habilitar, pon un nombre, una URL cualquiera de tu
    sistema, marca los servicios que necesitas (**GRE Emisión de Comprobantes**, `/v1/contribuyente/gem`;
    para facturas por API REST no hace falta, el SDK usa SOAP) y guarda. **(no verificado: en este negocio ya
@@ -53,19 +53,19 @@ identidad (DNI) de una persona real.
    pantalla existe; la ruta exacta de menú no)**
 2. La pantalla muestra los usuarios existentes y tres bloques: **Crear Usuario**, **Modificar Programas /
    Asignar Roles** y **Cambiar Estado** (Suspender o Eliminar).
-3. Pulsa **Crear Usuario** → *Registro de Usuario Secundario*:
+3. Pulsa **Crear Usuario** → _Registro de Usuario Secundario_:
    - **Tipo y número de documento:** DNI de la persona. Con DNI, SOL completa nombres y apellidos solo.
    - **Correo:** opcional.
    - **Usuario:** **exactamente 8 caracteres** (letras mayúsculas y números, sin símbolos). **(verificado)**
    - **Clave:** de 8 a 12 caracteres. Usa solo letras y números para evitar problemas de lectura en el
      `.env`. Guárdala en el `.env` en el momento.
-4. **Siguiente** → *Confirmación de datos*. Revisa y pulsa **Asignar Programas**.
-5. En *Asignación de opciones*, despliega **TRIBUTARIOS → Guía de Remisión Electrónica** y marca solo:
+4. **Siguiente** → _Confirmación de datos_. Revisa y pulsa **Asignar Programas**.
+5. En _Asignación de opciones_, despliega **TRIBUTARIOS → Guía de Remisión Electrónica** y marca solo:
    - **Emisión de GRE**
    - **Consulta de GRE**
    - (**Baja de GRE** solo si de verdad quieres ese permiso; no se sabe si la API REST lo usa.)
-   No marques *Credenciales de API*, declaraciones, pagos ni nada de Aduaneros o Bienes Fiscalizados.
-6. **Siguiente** → *Resumen de asignación* → **Grabar**. El usuario queda **Activo** y no hizo falta un
+     No marques _Credenciales de API_, declaraciones, pagos ni nada de Aduaneros o Bienes Fiscalizados.
+6. **Siguiente** → _Resumen de asignación_ → **Grabar**. El usuario queda **Activo** y no hizo falta un
    primer ingreso para poder autenticarse. **(verificado)**
 
 **Trampas conocidas:**
@@ -74,8 +74,8 @@ identidad (DNI) de una persona real.
   empieza de nuevo.
 - Para **facturas** hará falta, además, el perfil que corresponda al envío de comprobantes (SEE), después de
   la autorización SEE-Del contribuyente. **(no verificado: aún no se ha visto qué opción es)** Se agrega con
-  *Modificar Programas*, sin crear otro usuario.
-- Para cambiar permisos después: *Administración de Usuarios Secundarios* → seleccionar el usuario →
+  _Modificar Programas_, sin crear otro usuario.
+- Para cambiar permisos después: _Administración de Usuarios Secundarios_ → seleccionar el usuario →
   **Modificar Programas**.
 
 ## 3. Comprobar que quedó bien (sin crear documentos)
