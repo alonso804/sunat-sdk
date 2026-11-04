@@ -25,6 +25,16 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
+    },
+    "./ruc": {
+      "import": {
+        "types": "./dist/ruc.d.ts",
+        "default": "./dist/ruc.js"
+      },
+      "require": {
+        "types": "./dist/ruc.d.cts",
+        "default": "./dist/ruc.cjs"
+      }
     }
   },
   "files": [

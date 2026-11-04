@@ -19,6 +19,7 @@ pensado para usarse como paquete privado desde otras aplicaciones (desktop / mó
 | Descuentos, anticipos, detracción | ⏳ |
 | Notas de crédito / débito, boletas | ⏳ |
 | Consulta de estado / CDR de facturas (`getStatusCdr`, `getInvoiceStatus`) | ✅ implementada · solo existe en producción |
+| Consulta de datos de un contribuyente por RUC (`consultRuc`: razón social, nombre comercial, estado, condición, domicilio, actividad principal) | ✅ implementada · sin credenciales · con el desafío de anti-bot en pie, usa el fallback de curl automático (ver sección) |
 | GRE transportista, motivos de importación/exportación, baja de GRE por API | ⏳ |
 | Lectura de comprobantes y guías emitidos (SIRE y otros) | ⏳ |
 | Generación de PDF / QR | ⏳ |
@@ -175,6 +176,63 @@ comprobar en producción que el usuario SOL y sus permisos funcionan sin crear n
 (`scripts/invoice-prod-check.ts`). El manual del programador no lista la tabla de códigos de este método, así que el SDK
 no los interpreta: un comprobante inexistente puede llegar como código o como excepción (`SunatFaultError`).
 
+#### Consultar los datos de un contribuyente por su RUC (`consultRuc`)
+
+Va en una entrada aparte, `@alonso804/sunat-sdk/ruc`, separada de `SunatClient`: una app que solo emite comprobantes
+no la carga, y una falla en la consulta no afecta la emisión.
+
+```ts
+import { consultRuc, RucConsultStatus } from '@alonso804/sunat-sdk/ruc';
+import { SunatApiError } from '@alonso804/sunat-sdk'; // los errores son las clases de la entrada principal
+
+const result = await consultRuc('20539579356');
+if (result.status === RucConsultStatus.found) {
+  result.legalName;          // "EMPRESA DE TRANSPORTES PERU BUS KLEY S.A.C." (razón social)
+  result.tradeName;          // Nombre comercial (si está registrado)
+  result.taxpayerStatus;     // Estado del contribuyente: ACTIVO, BAJA DE OFICIO…
+  result.taxpayerCondition;  // Condición del contribuyente: HABIDO, NO HABIDO…
+  result.fiscalAddress;      // Domicilio fiscal
+  result.mainActivity;       // { code: '4921', description: 'TRANSPORTE …' } (CIIU Rev. 4, la actividad principal)
+}
+```
+
+Es de **solo lectura** y **no necesita certificado ni credenciales**: hace el mismo POST que el formulario web de
+`e-consultaruc.sunat.gob.pe` (`cl-ti-itmrconsruc/jcrS00Alias`) y se interpreta la página HTML que responde. Opciones:
+`consultRuc(ruc, { fetch, timeoutMs, retry: { maxRetries, delayMs } })`.
+
+- Como los demás resultados del SDK, se distingue por `status`: `'found'` con los datos, o `'not_found'` cuando la
+  consulta no informa datos. `not_found` pasa con RUC inexistentes y también cuando SUNAT está saturada
+  (por eso no se interpreta como "no existe" a la primera). Los demás fallos (red, página rara, otro RUC) son errores
+  del SDK; los primeros dos se reintentan solos (opción `retry`, igual que en `SunatClient`).
+- El RUC se valida antes de consultar (`isValidRuc`); un RUC inválido lanza `SunatValidationError` sin contactar a SUNAT.
+- El formulario pide el token del reCAPTCHA: al 02/11/2026 SUNAT no lo validaba (se envía texto aleatorio de 52
+  caracteres, sin cookies); tu script de referencia (`consulta_sunat.py`) sigue pasando con token aleatorio.
+- ⚠️ **Anti-bot** (revisado el 04/11/2026): SUNAT tiene este dominio detrás de Cloudflare. Puntúa al cliente por su
+  huella TLS/HTTP: el `urllib` de Python y el **`curl` del sistema en Windows (Schannel) pasan**, mientras el TLS
+  de Node (`fetch`, `https`, `http2`) recibe el desafío `403` ("Just a moment…", `cf-mitigated: challenge`) — y
+  también lo reciben las cabeceras con nombres en minúscula, por eso el transporte deja los nombres estilo
+  navegador (Title-Case). El SDK lo resuelve solo:
+  - **Fallback automático** (por defecto): `consultRuc` consulta con el `fetch` de Node y, solo si llega el
+    desafío, reintenta una vez con el curl del sistema (queda deshabilitado si el SO no tiene curl, o si pasas tu
+    propio `fetch`). Se apaga con `curlFallback: false`. Verificado en producción el 04/11/2026.
+  - **A mano** (para forzar curl desde la primera consulta): `consultRuc(ruc, { fetch: curlFetch() })`.
+  - **Cookies de navegador** que ya superó el desafío: **probado el 04/11/2026 y no bastan desde Node** — con un
+    `cf_clearance` fresco del navegador el desafío siguió llegando, con y sin `User-Agent` de navegador: Cloudflare
+    ata el desafío (y su clearance) a la huella del cliente (IP + TLS/HTTP), no a la cookie en solitario. Útiles
+    solo desde un cliente cuya huella ya pasa el score.
+- **¿El fallback necesita instalar algo?** Nada por defecto: `curl` viene integrado en Windows 10/11 (System32) y
+  en macOS (`/usr/bin/curl`). En servidores Linux suele faltar solo en imágenes contenedorizadas
+  (`apt install curl` / `apk add curl` / `dnf install curl`, según la base). El SDK lo comprueba una vez
+  (`isCurlAvailable()`); si falta, sigue en pie el error del desafío con las cookies como vía sin instalar nada.
+  Nota por plataforma: el curl de Windows lleva Schannel (huella que pasa); el de macOS/Linux lleva
+  OpenSSL/LibreSSL — es distinta de la de Node y probable que pase (igual que `urllib` de Python), pero sin
+  verificar sobre esas plataformas: pruébalo ahí con `scripts/ruc-consult.ts`; si devolviera el desafío,
+  queda el error claro (`SunatApiError` código `desafio-antibot`) y las cookies. Cuando SUNAT retire el desafío,
+  el `fetch` de Node vuelve a servir solo, sin curl ni cookies.
+- El parseo depende de la página de SUNAT (estructura Bootstrap de "list-group" confirmada el 04/11/2026); si
+  cambia y deja de extraer bien, corre `pnpm tsx scripts/ruc-consult.ts <RUC> --dump` y revisa el HTML guardado
+  en `out/` para calibrar `src/ruc-consult/parse.ts`.
+
 #### Reintentos automáticos
 
 `SunatClient` reintenta solo los fallos pasajeros: 3 reintentos por defecto, con pausas de 1 s, 2 s y 4 s.
@@ -286,6 +344,7 @@ Plan por etapas (el paquete no depende de cómo viva el repositorio):
 | `… invoice-prod-send.ts out/factura.json plan` | factura sin red: valida, calcula, firma y muestra el resumen (ver `scripts/examples/invoice.example.json`) |
 | `… invoice-prod-send.ts out/factura.json status` | solo lectura: ¿ya existe esa serie y número en SUNAT? (úsalo tras un error de red) |
 | `… invoice-prod-send.ts out/factura.json send` | emite **una factura REAL**: comprueba que el número esté libre y pide escribir `ENVIAR <nombre>` |
+| `pnpm tsx scripts/ruc-consult.ts <RUC…> [--dump]` | consulta pública (sin credenciales) de los datos publicados de uno o varios RUC, vía curl; con `--dump` guarda el HTML devuelto en `out/` |
 | `pnpm build` | genera `dist/` (ESM, CJS y tipos) |
 
 ## Seguridad
