@@ -57,8 +57,33 @@ console.log(prepared.summary); // totales, líneas, monto en letras
 
 // 2) Recién aquí se envía (acción con efecto tributario en producción).
 const result = await client.sendInvoice(prepared);
-// result.status: 'accepted' | 'accepted_with_observations' | 'rejected'
+// result.status: 'accepted' | 'accepted_with_observations' | 'rejected'  (ver "Estados")
 ```
+
+#### Estados y opciones
+
+Los estados y las opciones con valores fijos son objetos `as const` (no `enum`) y a la vez tipos con el mismo nombre, como
+las clases de error: se puede comparar o asignar con el objeto o con el texto, y usar el nombre como tipo.
+
+```ts
+import { SendInvoiceStatus } from '@alonso804/sunat-sdk';
+
+if (result.status === SendInvoiceStatus.rejected) { /* el correlativo quedó consumido */ }
+function label(status: SendInvoiceStatus) { /* 'accepted' | 'accepted_with_observations' | 'rejected' */ }
+```
+
+| Objeto y tipo | Valores | Dónde |
+|---|---|---|
+| `SendInvoiceStatus` | `accepted`, `acceptedWithObservations`, `rejected` | `sendInvoice` |
+| `DespatchStatus` | `accepted`, `acceptedWithObservations`, `rejected`, `pending` | `sendDespatch`, `getDespatchStatus` |
+| `SunatFaultKind` | `exception`, `rejected`, `unknown` | `SunatFaultError.kind` |
+| `RucConsultStatus` (en `/ruc`) | `found`, `notFound` | `consultRuc` |
+| `Environment` | `beta`, `homologation`, `production` | `SunatClientConfig.environment` |
+| `SignatureAlgorithm` | `sha1`, `sha256` | `SunatClientConfig.signatureAlgorithm` |
+| `Currency` | `PEN`, `USD` | `InvoiceInput.currency` |
+| `PaymentType` | `cash`, `credit` | `InvoiceInput.payment.type` |
+| `TransportMode` | `public`, `private` | `DespatchInput.transportMode` |
+| `TextCharset` | `unicode`, `latin1` | `SunatClientConfig.textCharset` |
 
 #### Factura al crédito, orden de compra y guía relacionada
 
@@ -270,6 +295,11 @@ Verificadas contra el manual del programador de SUNAT y contra el ambiente beta:
 - La firma usa **RSA-SHA1/SHA1** por defecto (lo que documenta SUNAT). `sha256` está disponible
   (`signatureAlgorithm: 'sha256'`); beta acepta ambos. En producción, las guías (GRE) se aceptan con SHA1, el valor
   por defecto (`scripts/gre-prod-check.ts`); para facturas falta confirmarlo.
+- **Tildes y caracteres especiales:** SUNAT beta aceptó, sin observaciones, facturas con tildes, ñ, símbolos (½ ° « » ¿ ¡)
+  y caracteres fuera de Latin-1 (€ “ ” — Ω) en descripciones, nombre del cliente y nota (verificado el 04/11/2026). El SDK
+  los envía tal cual (XML en UTF-8). Si un PDF que arma SUNAT (el de SOL, o el oficial de la guía) muestra `?`, usa
+  `textCharset: TextCharset.latin1`: cambia los caracteres fuera de Latin-1 por equivalentes simples (“ ” → ", — → -,
+  € → EUR) y quita los que no tienen equivalente, antes de firmar. Las tildes y la ñ no cambian.
 - Precio: se calcula valor unitario = precio con IGV / 1.18 (10 decimales), valor de línea = cantidad × valor unitario
   (2 decimales) e IGV por línea. Con este criterio, SUNAT beta aceptó 40 de 40 facturas aleatorias.
 

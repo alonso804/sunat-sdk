@@ -16,6 +16,20 @@ export class SunatValidationError extends SunatError {
 }
 
 /**
+ * Tipos de `SunatFaultError` según su código (ver `SunatFaultError.kind`). Es un objeto `as const` y a la vez un
+ * tipo con el mismo nombre: `SunatFaultKind.exception` es el valor y `SunatFaultKind` la unión de todos.
+ */
+export const SunatFaultKind = {
+  /** 0100–1999: error grave; el comprobante quedó NO informado. Corrige y reenvía con el MISMO número. */
+  exception: 'exception',
+  /** 2000–3999: SUNAT lo procesó y no es válido. En facturas y notas el número queda CONSUMIDO. */
+  rejected: 'rejected',
+  /** Código fuera de esos rangos o que no es un número. */
+  unknown: 'unknown',
+} as const;
+export type SunatFaultKind = (typeof SunatFaultKind)[keyof typeof SunatFaultKind];
+
+/**
  * SUNAT respondió con un SOAP Fault. Según el manual del programador hay dos casos
  * con consecuencias distintas (ver `kind`).
  */
@@ -36,12 +50,12 @@ export class SunatFaultError extends SunatError {
    * - `rejected` (2000–3999): SUNAT lo procesó pero no es válido. En facturas y notas el
    *   número queda CONSUMIDO: hay que emitir un comprobante nuevo con OTRO número.
    */
-  get kind(): 'exception' | 'rejected' | 'unknown' {
+  get kind(): SunatFaultKind {
     const n = Number(this.code);
-    if (!Number.isFinite(n)) return 'unknown';
-    if (n >= 100 && n <= 1999) return 'exception';
-    if (n >= 2000 && n <= 3999) return 'rejected';
-    return 'unknown';
+    if (!Number.isFinite(n)) return SunatFaultKind.unknown;
+    if (n >= 100 && n <= 1999) return SunatFaultKind.exception;
+    if (n >= 2000 && n <= 3999) return SunatFaultKind.rejected;
+    return SunatFaultKind.unknown;
   }
 }
 

@@ -1,10 +1,11 @@
 import { readCdrFromApplicationResponse, type Cdr } from '../cdr';
-import { RELATED_DOCUMENT_TYPES, SELF_RECIPIENT_REASONS, TRANSFER_REASONS, type TransferReason } from '../catalogs';
+import { RELATED_DOCUMENT_TYPES, SELF_RECIPIENT_REASONS, TRANSFER_REASONS, type TransferReason, type TransportMode } from '../catalogs';
 import { SunatApiError, SunatTransportError, SunatValidationError } from '../errors';
 import type { Issuer } from '../invoice/schema';
 import { dec, fmtFixed, fmtUpTo } from '../money';
 import type { SigningKey } from '../signing/certificate';
 import { extractDigestValue, signUblXml, type SignatureAlgorithm } from '../signing/xmldsig';
+import { TextCharset, toLatin1Deep } from '../text-charset';
 import { toValidationError } from '../validation';
 import { limaDateTime } from '../xml';
 import type { TicketStatus } from '../gre/api';
@@ -19,7 +20,7 @@ export type DespatchSummary = {
   /** Hora de Lima, `YYYY-MM-DD HH:mm:ss`. */
   issuedAt: string;
   reason: { code: TransferReason; label: string };
-  transportMode: 'public' | 'private';
+  transportMode: TransportMode;
   transferStartDate: string;
   recipient: ResolvedParty;
   origin: { ubigeo: string; address: string };
@@ -47,9 +48,25 @@ export type PreparedDespatch = {
   warnings: string[];
 };
 
+/**
+ * Estados de `DespatchResult`. Es un objeto `as const` y a la vez un tipo con el mismo nombre (como las clases de
+ * error): `DespatchStatus.pending` es el valor y `DespatchStatus` la unión de todos.
+ */
+export const DespatchStatus = {
+  /** Aceptada: ya se puede iniciar el traslado. Guarda el CDR. */
+  accepted: 'accepted',
+  /** Aceptada con observaciones (en `cdr.notes`): también se puede iniciar el traslado. */
+  acceptedWithObservations: 'accepted_with_observations',
+  /** Rechazada: en guías el rechazo no invalida el número; corrige y reenvía. */
+  rejected: 'rejected',
+  /** SUNAT ya la recibió pero aún no se conoce el resultado: consulta con `getDespatchStatus`; no la reenvíes. */
+  pending: 'pending',
+} as const;
+export type DespatchStatus = (typeof DespatchStatus)[keyof typeof DespatchStatus];
+
 export type DespatchResult =
   | {
-      status: 'accepted' | 'accepted_with_observations';
+      status: typeof DespatchStatus.accepted | typeof DespatchStatus.acceptedWithObservations;
       baseName: string;
       ticket: string;
       cdr: Cdr;
@@ -62,7 +79,7 @@ export type DespatchResult =
     }
   | {
       /** SUNAT procesó el envío y lo rechazó. En guías el rechazo no invalida el número. */
-      status: 'rejected';
+      status: typeof DespatchStatus.rejected;
       baseName: string;
       ticket: string;
       code: string;
@@ -75,7 +92,7 @@ export type DespatchResult =
        * espera o falló la consulta (ver `statusError`). Consulta de nuevo con `getDespatchStatus({ baseName, ticket })`;
        * NO la reenvíes con otro número.
        */
-      status: 'pending';
+      status: typeof DespatchStatus.pending;
       baseName: string;
       ticket: string;
       /** Solo si la consulta del ticket falló (red, error de SUNAT, CDR ilegible). La guía igual quedó recibida. */
@@ -103,11 +120,13 @@ export function prepareDespatch(params: {
   signingKey: SigningKey;
   algorithm: SignatureAlgorithm;
   now: () => Date;
+  /** Ver `SunatClientConfig.textCharset`. Por defecto `unicode`. */
+  textCharset?: TextCharset;
 }): PreparedDespatch {
   const { issuer, input, signingKey, algorithm } = params;
   const parsed = DespatchSchema.safeParse(input);
   if (!parsed.success) throw toValidationError(parsed.error);
-  const d = parsed.data;
+  const d = params.textCharset === TextCharset.latin1 ? toLatin1Deep(parsed.data) : parsed.data;
 
   const issuedAt = d.issuedAt ?? params.now();
   const issued = limaDateTime(issuedAt);
@@ -186,7 +205,7 @@ export function prepareDespatch(params: {
 export function mapTicketStatus(baseName: string, ticket: string, status: TicketStatus): DespatchResult {
   switch (status.code) {
     case '98':
-      return { status: 'pending', baseName, ticket };
+      return { status: DespatchStatus.pending, baseName, ticket };
 
     case '0': {
       if (!status.cdrBase64) {
@@ -194,9 +213,9 @@ export function mapTicketStatus(baseName: string, ticket: string, status: Ticket
       }
       const { cdr, cdrZip } = readCdrFromApplicationResponse(status.cdrBase64);
       if (!cdr.accepted) {
-        return { status: 'rejected', baseName, ticket, code: cdr.responseCode, message: cdr.description, cdr };
+        return { status: DespatchStatus.rejected, baseName, ticket, code: cdr.responseCode, message: cdr.description, cdr };
       }
-      return { status: cdr.notes.length > 0 ? 'accepted_with_observations' : 'accepted', baseName, ticket, cdr, cdrZip };
+      return { status: cdr.notes.length > 0 ? DespatchStatus.acceptedWithObservations : DespatchStatus.accepted, baseName, ticket, cdr, cdrZip };
     }
 
     case '99': {
@@ -209,7 +228,7 @@ export function mapTicketStatus(baseName: string, ticket: string, status: Ticket
         }
       }
       return {
-        status: 'rejected',
+        status: DespatchStatus.rejected,
         baseName,
         ticket,
         code: status.error?.number || cdr?.responseCode || '99',
@@ -247,7 +266,7 @@ export async function waitForDespatch(
   for (;;) {
     try {
       const result = mapTicketStatus(baseName, ticket, await fetchStatus());
-      if (result.status !== 'pending' || now() >= deadline) return result;
+      if (result.status !== DespatchStatus.pending || now() >= deadline) return result;
     } catch (error) {
       if (!isTransient(error) || now() >= deadline) throw error;
     }

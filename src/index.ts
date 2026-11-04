@@ -1,5 +1,8 @@
-export { SunatClient } from './client';
+export { SendInvoiceStatus, SunatClient } from './client';
 export type {
+  DespatchPdfRetryOptions,
+  DespatchStatusOptions,
+  DespatchTicketRef,
   GreCredentials,
   InvoiceStatusQuery,
   InvoiceStatusResult,
@@ -9,21 +12,22 @@ export type {
   SunatClientConfig,
 } from './client';
 
-export { ENDPOINTS } from './config';
-export type { Environment } from './config';
+export { ENDPOINTS, Environment } from './config';
 
 export { DespatchSchema } from './despatch/schema';
 export type { Despatch, DespatchInput } from './despatch/schema';
+export { DespatchStatus } from './despatch/service';
 export type { DespatchResult, DespatchSendOptions, DespatchSummary, PreparedDespatch } from './despatch/service';
 export { GRE_ENDPOINTS } from './gre/api';
 export { downloadDespatchPdf } from './gre/pdf';
 export type { DespatchPdf, DespatchPdfOptions } from './gre/pdf';
-export { RELATED_DOCUMENT_TYPES, TRANSFER_REASONS } from './catalogs';
+export { Currency, RELATED_DOCUMENT_TYPES, TRANSFER_REASONS, TransportMode } from './catalogs';
 
-export { SunatApiError, SunatError, SunatFaultError, SunatTransportError, SunatValidationError } from './errors';
+export { SunatApiError, SunatError, SunatFaultError, SunatFaultKind, SunatTransportError, SunatValidationError } from './errors';
+export { TextCharset } from './text-charset';
 export type { RetryOptions } from './retry';
 
-export { InvoiceSchema, IssuerSchema } from './invoice/schema';
+export { InvoiceSchema, IssuerSchema, PaymentType } from './invoice/schema';
 export type {
   Invoice,
   InvoiceInput,
@@ -38,6 +42,7 @@ export type { Cdr } from './cdr';
 
 export { checkCertificate, describeCertificate, signingKeyFromPem, signingKeyFromPfx } from './signing/certificate';
 export type { CertificateCheck, CertificateInfo, SigningKey } from './signing/certificate';
-export type { SignatureAlgorithm } from './signing/xmldsig';
+export { SignatureAlgorithm } from './signing/xmldsig';
 
 export { isValidRuc } from './ruc';
+

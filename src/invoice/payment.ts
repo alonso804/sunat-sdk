@@ -1,11 +1,11 @@
 import { SunatValidationError } from '../errors';
 import { D, dec, fmt2, round, type Dec } from '../money';
-import type { Invoice } from './schema';
+import { PaymentType, type Invoice } from './schema';
 
 export type ResolvedPayment =
-  | { type: 'cash' }
+  | { type: typeof PaymentType.cash }
   | {
-      type: 'credit';
+      type: typeof PaymentType.credit;
       /** Monto neto pendiente de pago (por defecto, el total de la factura). */
       netPending: Dec;
       installments: Array<{ number: number; dueDate: string; amount: Dec }>;
@@ -23,7 +23,7 @@ const CENT = new D('0.01');
  *   va en la última; si todas lo traen, deben sumar exactamente el monto neto pendiente (SUNAT rechaza con 3319 si no suman). No se admiten mezclas.
  */
 export function resolvePayment(payment: Invoice['payment'], total: Dec, issueDate: string): ResolvedPayment {
-  if (payment.type === 'cash') return { type: 'cash' };
+  if (payment.type === PaymentType.cash) return { type: PaymentType.cash };
 
   const issues: Array<{ path: string; message: string }> = [];
   const totalCents = round(total, 2);
@@ -59,7 +59,7 @@ export function resolvePayment(payment: Invoice['payment'], total: Dec, issueDat
 
   if (issues.length > 0) throw new SunatValidationError('La forma de pago no es válida.', issues);
   return {
-    type: 'credit',
+    type: PaymentType.credit,
     netPending,
     installments: payment.installments.map((installment, i) => ({ number: i + 1, dueDate: installment.dueDate, amount: amounts[i] as Dec })),
   };

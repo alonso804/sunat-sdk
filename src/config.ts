@@ -1,4 +1,16 @@
-export type Environment = 'beta' | 'homologation' | 'production';
+/**
+ * Ambientes de SUNAT. Es un objeto `as const` y a la vez un tipo con el mismo nombre: `Environment.production` es el
+ * valor y `Environment` la unión de todos.
+ */
+export const Environment = {
+  /** Pruebas: valida la estructura del XML (usuario `<RUC>MODDATOS`, clave `MODDATOS`). Sin efecto tributario. */
+  beta: 'beta',
+  /** Homologación (a confirmar con SUNAT al iniciar el trámite). */
+  homologation: 'homologation',
+  /** Producción: cada comprobante aceptado tiene efecto tributario. */
+  production: 'production',
+} as const;
+export type Environment = (typeof Environment)[keyof typeof Environment];
 
 export type EnvironmentEndpoints = {
   /** SOAP billService: sendBill / getStatus / sendSummary (facturas, boletas, notas). */

@@ -2,7 +2,17 @@ import { SignedXml } from 'xml-crypto';
 import { SIGNATURE_ID } from '../xml';
 import type { SigningKey } from './certificate';
 
-export type SignatureAlgorithm = 'sha1' | 'sha256';
+/**
+ * Algoritmos de firma del XML. Es un objeto `as const` y a la vez un tipo con el mismo nombre:
+ * `SignatureAlgorithm.sha1` es el valor y `SignatureAlgorithm` la unión de todos.
+ */
+export const SignatureAlgorithm = {
+  /** RSA-SHA1 / SHA1: el que documenta el manual de SUNAT (por defecto). Las guías se aceptan así en producción. */
+  sha1: 'sha1',
+  /** RSA-SHA256 / SHA256: SUNAT beta lo acepta; confirma qué exige producción antes de usarlo. */
+  sha256: 'sha256',
+} as const;
+export type SignatureAlgorithm = (typeof SignatureAlgorithm)[keyof typeof SignatureAlgorithm];
 
 const ALGORITHMS = {
   // El manual del programador de SUNAT documenta RSA-SHA1 / SHA1. SHA-256 queda disponible
@@ -25,7 +35,7 @@ const ENVELOPED = 'http://www.w3.org/2000/09/xmldsig#enveloped-signature';
  * `ext:UBLExtensions/ext:UBLExtension/ext:ExtensionContent`, como exige SUNAT.
  * Después de firmar no se puede modificar el XML.
  */
-export function signUblXml(xml: string, key: SigningKey, algorithm: SignatureAlgorithm = 'sha1'): string {
+export function signUblXml(xml: string, key: SigningKey, algorithm: SignatureAlgorithm = SignatureAlgorithm.sha1): string {
   const algo = ALGORITHMS[algorithm];
   const sig = new SignedXml({
     privateKey: key.privateKeyPem,

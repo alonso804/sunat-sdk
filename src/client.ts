@@ -2,25 +2,28 @@ import { readCdrFromApplicationResponse, type Cdr } from './cdr';
 import { ENDPOINTS, type Environment } from './config';
 import type { DespatchInput } from './despatch/schema';
 import {
+  DespatchStatus,
   prepareDespatch,
   waitForDespatch,
   type DespatchResult,
   type DespatchSendOptions,
   type PreparedDespatch,
 } from './despatch/service';
-import { SunatApiError, SunatError, SunatFaultError, SunatValidationError } from './errors';
+import { SunatApiError, SunatError, SunatFaultError, SunatFaultKind, SunatValidationError } from './errors';
 import { getTicketStatus, postDespatch, requestToken, type Token } from './gre/api';
 import { downloadDespatchPdf, type DespatchPdf, type DespatchPdfOptions } from './gre/pdf';
 import { calculateInvoice } from './invoice/calculate';
 import { resolvePayment } from './invoice/payment';
-import { InvoiceSchema, IssuerSchema, type InvoiceInput, type Issuer, type IssuerInput } from './invoice/schema';
+import type { Currency } from './catalogs';
+import { InvoiceSchema, IssuerSchema, PaymentType, type InvoiceInput, type Issuer, type IssuerInput } from './invoice/schema';
 import { buildInvoiceXml, invoiceBaseName } from './invoice/xml';
 import { fmt2, fmtUpTo } from './money';
-import { amountInWords } from './numero-a-letras';
+import { amountInWords } from './amount-in-words';
 import type { SigningKey } from './signing/certificate';
-import { extractDigestValue, signUblXml, type SignatureAlgorithm } from './signing/xmldsig';
+import { extractDigestValue, SignatureAlgorithm, signUblXml } from './signing/xmldsig';
 import { isRetryableRead, isSafeToResend, withRetries, type RetryOptions } from './retry';
 import { getStatusCdr, sendBill } from './soap/bill-service';
+import { TextCharset, toLatin1Deep } from './text-charset';
 import { toValidationError } from './validation';
 import { limaDateTime } from './xml';
 import { zipSingleFile } from './zip';
@@ -59,6 +62,12 @@ export type SunatClientConfig = {
    * - Lecturas (token de la API, `getInvoiceStatus`, `getDespatchStatus`): ante cualquier fallo pasajero.
    */
   retry?: RetryOptions;
+  /**
+   * Juego de caracteres del texto que se escribe en el XML (ver `TextCharset`). Por defecto `unicode`: se envía tal
+   * cual, con tildes y cualquier símbolo. Con `latin1`, los caracteres fuera de Latin-1 se cambian por equivalentes
+   * simples antes de firmar (aplica a los datos del emisor, de la factura y de la guía; se ve en `summary`).
+   */
+  textCharset?: TextCharset;
   /** Reloj inyectable (pruebas). */
   now?: () => Date;
 };
@@ -67,7 +76,7 @@ export type SunatClientConfig = {
 export type InvoiceSummary = {
   series: string;
   number: number;
-  currency: 'PEN' | 'USD';
+  currency: Currency;
   customer: { ruc: string; name: string };
   lines: Array<{ description: string; quantity: string; unitPrice: string; lineValue: string; igv: string }>;
   taxedBase: string;
@@ -78,8 +87,8 @@ export type InvoiceSummary = {
   totalInWords: string;
   /** Forma de pago ya resuelta: en crédito, el monto neto pendiente (por defecto el total) y las cuotas con su monto. */
   payment:
-    | { type: 'cash' }
-    | { type: 'credit'; netPending: string; installments: Array<{ number: number; dueDate: string; amount: string }> };
+    | { type: typeof PaymentType.cash }
+    | { type: typeof PaymentType.credit; netPending: string; installments: Array<{ number: number; dueDate: string; amount: string }> };
   purchaseOrder?: string;
   relatedDespatches: Array<{ type: '09' | '31'; number: string }>;
 };
@@ -116,9 +125,23 @@ export type InvoiceStatusResult = {
   cdrZip?: Uint8Array;
 };
 
+/**
+ * Estados de `SendInvoiceResult`. Es un objeto `as const` y a la vez un tipo con el mismo nombre (como las clases de
+ * error): `SendInvoiceStatus.rejected` es el valor y `SendInvoiceStatus` la unión de todos.
+ */
+export const SendInvoiceStatus = {
+  /** Aceptada sin observaciones. */
+  accepted: 'accepted',
+  /** Aceptada con observaciones (códigos 4000+ en `cdr.notes`): conviene corregirlas en los próximos comprobantes. */
+  acceptedWithObservations: 'accepted_with_observations',
+  /** Rechazada por validación (códigos 2000–3999): en facturas y notas el correlativo queda CONSUMIDO. */
+  rejected: 'rejected',
+} as const;
+export type SendInvoiceStatus = (typeof SendInvoiceStatus)[keyof typeof SendInvoiceStatus];
+
 export type SendInvoiceResult =
   | {
-      status: 'accepted' | 'accepted_with_observations';
+      status: typeof SendInvoiceStatus.accepted | typeof SendInvoiceStatus.acceptedWithObservations;
       baseName: string;
       cdr: Cdr;
       /** CDR tal como lo devolvió SUNAT (ZIP); conviene guardarlo como constancia. */
@@ -130,36 +153,107 @@ export type SendInvoiceResult =
        * IMPORTANTE: en facturas y notas el correlativo queda CONSUMIDO; corrige el problema y
        * emite un comprobante nuevo con el siguiente número.
        */
-      status: 'rejected';
+      status: typeof SendInvoiceStatus.rejected;
       baseName: string;
       code: string;
       message: string;
     };
 
+/** Guía ya enviada que se consulta con `getDespatchStatus`: sale de un resultado `pending` de `sendDespatch`. */
+export type DespatchTicketRef = {
+  /** `<RUC>-09-<SERIE>-<CORRELATIVO>`, el `baseName` del resultado. */
+  baseName: string;
+  /** Ticket que devolvió SUNAT al recibir la guía. */
+  ticket: string;
+};
+
+/** Opciones de `getDespatchStatus`. */
+export type DespatchStatusOptions = Pick<DespatchSendOptions, 'downloadPdf'>;
+
+/** Opciones de `SunatClient.downloadDespatchPdf`: los reintentos de la descarga. */
+export type DespatchPdfRetryOptions = Pick<DespatchPdfOptions, 'retry'>;
+
+/**
+ * Cliente para emitir comprobantes directo a SUNAT, sin PSE ni OSE: facturas (servicio SOAP) y guías de remisión
+ * remitente (API REST).
+ *
+ * Cada emisión tiene dos pasos:
+ * 1. `prepareInvoice` / `prepareDespatch`: valida, calcula y firma **sin contactar a SUNAT**. Muestra el `summary`
+ *    al usuario y pide confirmación.
+ * 2. `sendInvoice` / `sendDespatch`: recién aquí se envía (en producción tiene efecto tributario).
+ *
+ * Úsalo solo en un backend Node: necesita el certificado digital y las claves SOL. Una app móvil o de escritorio
+ * debe llamar a ese backend, nunca firmar en el dispositivo.
+ *
+ * @example
+ * ```ts
+ * import { SunatClient, signingKeyFromPfx } from '@alonso804/sunat-sdk';
+ * import { readFileSync } from 'node:fs';
+ *
+ * const client = new SunatClient({
+ *   environment: 'production',
+ *   issuer: {
+ *     ruc: '20000000001',
+ *     legalName: 'MI EMPRESA SAC',
+ *     address: { ubigeo: '150101', department: 'LIMA', province: 'LIMA', district: 'LIMA', street: 'AV. PRINCIPAL 123' },
+ *   },
+ *   sol: { user: 'USUARIO1', password: process.env.SOL_PASSWORD! },
+ *   gre: { clientId: process.env.GRE_CLIENT_ID!, clientSecret: process.env.GRE_CLIENT_SECRET! }, // solo para guías
+ *   signingKey: signingKeyFromPfx(readFileSync('certificado.pfx'), process.env.CERT_PASSWORD!),
+ * });
+ * ```
+ */
 export class SunatClient {
+  /** Datos del emisor ya validados y normalizados (con los valores por defecto aplicados). */
   readonly issuer: Issuer;
   private greToken: Token | undefined;
 
+  /**
+   * Crea el cliente. No contacta a SUNAT: solo valida los datos del emisor.
+   *
+   * @param config - Ambiente, emisor, credenciales SOL (y de API, si emitirás guías), certificado y opciones de red.
+   * @throws {SunatValidationError} Si los datos del emisor no son válidos (RUC, ubigeo, etc.); el detalle por campo
+   *   está en `issues`.
+   */
   constructor(private readonly config: SunatClientConfig) {
     const parsed = IssuerSchema.safeParse(config.issuer);
     if (!parsed.success) throw toValidationError(parsed.error);
-    this.issuer = parsed.data;
+    this.issuer = config.textCharset === TextCharset.latin1 ? toLatin1Deep(parsed.data) : parsed.data;
   }
 
   /**
-   * Valida, calcula totales, genera el XML UBL 2.1 y lo firma. No contacta a SUNAT.
-   * Úsalo para mostrar un resumen y pedir confirmación antes de `sendInvoice`.
+   * Valida la factura, calcula totales e IGV, genera el XML UBL 2.1 y lo firma. **No contacta a SUNAT.**
+   * Muestra `summary` al usuario y pide confirmación antes de llamar a `sendInvoice`.
+   *
+   * @param input - Serie (`F` + 3 caracteres), correlativo, cliente (con RUC) e ítems. En cada ítem indica
+   *   `unitPrice` (precio CON IGV) o `unitValue` (valor SIN IGV), no ambos. Opcional: moneda (`PEN` por defecto),
+   *   forma de pago (`cash` por defecto, o `credit` con cuotas), orden de compra y guías relacionadas.
+   * @returns La factura firmada (`signedXml`, `baseName`) y su `summary`: líneas, bases, IGV, total, monto en letras y
+   *   cuotas ya calculadas.
+   * @throws {SunatValidationError} Si un dato no es válido o la forma de pago no cuadra (las cuotas no suman el monto
+   *   neto pendiente, un vencimiento no es posterior a la emisión…); el detalle por campo está en `issues`.
+   *
+   * @example
+   * ```ts
+   * const prepared = client.prepareInvoice({
+   *   series: 'F001',
+   *   number: 1,
+   *   customer: { ruc: '20131312955', name: 'CLIENTE SAC' },
+   *   items: [{ description: 'CEMENTO 42.5 KG', quantity: 10, unitPrice: 29.5 }],
+   * });
+   * prepared.summary.total; // "295.00"
+   * ```
    */
   prepareInvoice(input: InvoiceInput): PreparedInvoice {
     const parsed = InvoiceSchema.safeParse(input);
     if (!parsed.success) throw toValidationError(parsed.error);
-    const invoice = parsed.data;
+    const invoice = this.config.textCharset === TextCharset.latin1 ? toLatin1Deep(parsed.data) : parsed.data;
 
     const issuedAt = invoice.issuedAt ?? this.config.now?.() ?? new Date();
     const calculation = calculateInvoice(invoice);
     const payment = resolvePayment(invoice.payment, calculation.totals.payable, limaDateTime(issuedAt).date);
     const unsignedXml = buildInvoiceXml({ issuer: this.issuer, invoice, calculation, payment, issuedAt });
-    const signedXml = signUblXml(unsignedXml, this.config.signingKey, this.config.signatureAlgorithm ?? 'sha1');
+    const signedXml = signUblXml(unsignedXml, this.config.signingKey, this.config.signatureAlgorithm ?? SignatureAlgorithm.sha1);
     const { totals } = calculation;
 
     return {
@@ -186,10 +280,10 @@ export class SunatClient {
         total: fmt2(totals.payable),
         totalInWords: amountInWords(totals.payable, invoice.currency),
         payment:
-          payment.type === 'cash'
-            ? { type: 'cash' }
+          payment.type === PaymentType.cash
+            ? { type: PaymentType.cash }
             : {
-                type: 'credit',
+                type: PaymentType.credit,
                 netPending: fmt2(payment.netPending),
                 installments: payment.installments.map((i) => ({ number: i.number, dueDate: i.dueDate, amount: fmt2(i.amount) })),
               },
@@ -200,15 +294,30 @@ export class SunatClient {
   }
 
   /**
-   * Envía la factura a SUNAT y devuelve el resultado.
+   * Envía a SUNAT una factura preparada con `prepareInvoice`. **En producción tiene efecto tributario.**
    *
    * - Aceptada (con o sin observaciones) o rechazada por validación: se devuelve el resultado.
    *   Un rechazo consume el correlativo (ver `SendInvoiceResult`).
-   * - Excepción de SUNAT (`SunatFaultError` con `kind === 'exception'`): el comprobante quedó
+   * - Excepción de SUNAT (`SunatFaultError` con `kind === SunatFaultKind.exception`): el comprobante quedó
    *   "no informado"; corrige y reenvía con el MISMO correlativo.
    * - Error de red (`SunatTransportError`): no se sabe si SUNAT lo recibió. NO generes otro
-   *   correlativo: reenvía el mismo comprobante o consulta su estado.
-   * - No envíes varias facturas en paralelo: el proxy de SUNAT puede responder 401.
+   *   correlativo: consulta su estado con `getInvoiceStatus` o reenvía el mismo comprobante.
+   * - No envíes varias facturas en paralelo: el proxy de SUNAT puede responder 401. Los fallos que SUNAT con
+   *   seguridad no procesó se reintentan solos (ver `SunatClientConfig.retry`).
+   *
+   * @param prepared - Resultado de `prepareInvoice`. No modifiques `signedXml`: invalidaría la firma.
+   * @returns `accepted` / `accepted_with_observations` con el CDR (`cdrZip` es la constancia: guárdalo), o
+   *   `rejected` con el código y el mensaje de SUNAT.
+   * @throws {SunatFaultError} Excepción de SUNAT (0100–1999): el comprobante quedó "no informado"; corrige y reenvía
+   *   con el mismo correlativo.
+   * @throws {SunatTransportError} No se pudo completar el envío y no se sabe si SUNAT lo recibió.
+   *
+   * @example
+   * ```ts
+   * const result = await client.sendInvoice(prepared);
+   * if (result.status === SendInvoiceStatus.rejected) console.error(result.code, result.message); // el número quedó consumido
+   * else save(result.cdrZip);
+   * ```
    */
   async sendInvoice(prepared: PreparedInvoice): Promise<SendInvoiceResult> {
     const { baseName } = prepared;
@@ -229,18 +338,18 @@ export class SunatClient {
         this.config.retry,
       );
     } catch (error) {
-      if (error instanceof SunatFaultError && error.kind === 'rejected') {
-        return { status: 'rejected', baseName, code: error.code, message: error.sunatMessage };
+      if (error instanceof SunatFaultError && error.kind === SunatFaultKind.rejected) {
+        return { status: SendInvoiceStatus.rejected, baseName, code: error.code, message: error.sunatMessage };
       }
       throw error;
     }
 
     const { cdr, cdrZip } = readCdrFromApplicationResponse(applicationResponse);
     if (!cdr.accepted) {
-      return { status: 'rejected', baseName, code: cdr.responseCode, message: cdr.description };
+      return { status: SendInvoiceStatus.rejected, baseName, code: cdr.responseCode, message: cdr.description };
     }
     return {
-      status: cdr.notes.length > 0 ? 'accepted_with_observations' : 'accepted',
+      status: cdr.notes.length > 0 ? SendInvoiceStatus.acceptedWithObservations : SendInvoiceStatus.accepted,
       baseName,
       cdr,
       cdrZip,
@@ -256,6 +365,19 @@ export class SunatClient {
    *
    * Un comprobante que no existe o que no te pertenece lo informa SUNAT con un código o con una excepción
    * (`SunatFaultError`); el SDK no interpreta esos códigos porque el manual no los lista para este método.
+   *
+   * @param query - Serie y correlativo del comprobante (siempre del emisor configurado) y su tipo (`01` por defecto).
+   * @returns El código y el mensaje de SUNAT tal cual, y el CDR si SUNAT lo adjuntó.
+   * @throws {SunatValidationError} Si la serie, el número o el tipo no son válidos.
+   * @throws {SunatError} Si el cliente no está en `production` (SUNAT no ofrece esta consulta en beta).
+   * @throws {SunatFaultError} Si SUNAT responde con una excepción (p. ej. usuario sin permiso de consulta).
+   * @throws {SunatTransportError} Si la consulta falla por red tras los reintentos.
+   *
+   * @example
+   * ```ts
+   * const status = await client.getInvoiceStatus({ series: 'F001', number: 15 });
+   * if (status.cdrZip) save(status.cdrZip);
+   * ```
    */
   async getInvoiceStatus(query: InvoiceStatusQuery): Promise<InvoiceStatusResult> {
     const type = query.type ?? '01';
@@ -299,16 +421,45 @@ export class SunatClient {
   // ------------------------------------------------------------------------------------------
 
   /**
-   * Valida, genera el XML UBL 2.1 de la GRE remitente y lo firma. No contacta a SUNAT.
-   * Úsalo para mostrar `summary` y `warnings` y pedir confirmación antes de `sendDespatch`.
+   * Valida la guía de remisión remitente (GRE, tipo 09), genera su XML UBL 2.1 y lo firma. **No contacta a SUNAT.**
+   * Muestra `summary` y `warnings` al usuario y pide confirmación antes de llamar a `sendDespatch`.
+   *
+   * @param input - Serie (`T` + 3 caracteres), correlativo, motivo de traslado (catálogo 20), destinatario, modalidad
+   *   (`private`: vehículo y conductor propios; `public`: transportista), fecha de inicio del traslado, peso bruto,
+   *   puntos de partida y llegada e ítems. El SDK valida las reglas de cada motivo (p. ej. el 04 exige los códigos de
+   *   establecimiento).
+   * @returns La guía firmada (`signedXml`, `baseName`), su `summary` y avisos para el usuario (`warnings`), por
+   *   ejemplo hasta cuándo se puede dar de baja.
+   * @throws {SunatValidationError} Si un dato no es válido o falta uno que exige el motivo o la modalidad; el detalle
+   *   por campo está en `issues`.
+   *
+   * @example
+   * ```ts
+   * const prepared = client.prepareDespatch({
+   *   series: 'T001',
+   *   number: 1,
+   *   reason: '01', // venta
+   *   recipient: { docType: '6', docNumber: '20131312955', name: 'CLIENTE SAC' },
+   *   transportMode: 'private',
+   *   transferStartDate: '2026-11-04',
+   *   grossWeight: { value: 425.5, unit: 'KGM' },
+   *   origin: { ubigeo: '040106', address: 'MI ALMACEN' },
+   *   destination: { ubigeo: '040101', address: 'OBRA DEL CLIENTE' },
+   *   vehicle: { plate: 'ABC-123' },
+   *   drivers: [{ docNumber: '12345678', firstName: 'JUAN', lastName: 'PEREZ', license: 'Q12345678' }],
+   *   items: [{ description: 'CEMENTO SOL TIPO I 42.5 KG', quantity: 10 }],
+   * });
+   * console.log(prepared.summary, prepared.warnings);
+   * ```
    */
   prepareDespatch(input: DespatchInput): PreparedDespatch {
     return prepareDespatch({
       issuer: this.issuer,
       input,
       signingKey: this.config.signingKey,
-      algorithm: this.config.signatureAlgorithm ?? 'sha1',
+      algorithm: this.config.signatureAlgorithm ?? SignatureAlgorithm.sha1,
       now: this.config.now ?? (() => new Date()),
+      textCharset: this.config.textCharset ?? TextCharset.unicode,
     });
   }
 
@@ -321,6 +472,25 @@ export class SunatClient {
    *   ver `statusError`). Consulta con `getDespatchStatus({ baseName, ticket })`; no la reenvíes.
    * - Error lanzado (`SunatTransportError`, `SunatApiError`): ocurrió ANTES de obtener el ticket. Con un error de
    *   red no se sabe si SUNAT la recibió; no cambies el número.
+   *
+   * @param prepared - Resultado de `prepareDespatch`. No modifiques `signedXml`: invalidaría la firma.
+   * @param options - Espera del resultado (`pollIntervalMs`, `maxWaitMs`) y `downloadPdf: true` para bajar también el
+   *   PDF oficial si queda aceptada (un fallo de esa descarga nunca convierte el envío en error: queda en `pdfError`).
+   * @returns `accepted` / `accepted_with_observations` con el CDR (`cdrZip`: guárdalo, es el sustento del traslado) y
+   *   `cdr.qrUrl` para el QR; `rejected` con el código y el mensaje; o `pending` con el `ticket`.
+   * @throws {SunatValidationError} Si el cliente no tiene configuradas las credenciales de API (`gre`).
+   * @throws {SunatApiError} Si SUNAT rechaza la petición antes de dar el ticket (credenciales, validación 422…).
+   * @throws {SunatTransportError} Si falla la red antes de obtener el ticket.
+   *
+   * @example
+   * ```ts
+   * const result = await client.sendDespatch(prepared, { downloadPdf: true });
+   * if (result.status === DespatchStatus.pending) saveForLater(result.baseName, result.ticket); // luego: getDespatchStatus
+   * if (result.status === DespatchStatus.accepted || result.status === DespatchStatus.acceptedWithObservations) {
+   *   save(result.cdrZip);
+   *   const qrText = result.cdr.qrUrl; // texto que debe codificar el QR
+   * }
+   * ```
    */
   async sendDespatch(prepared: PreparedDespatch, options: DespatchSendOptions = {}): Promise<DespatchResult> {
     const { baseName } = prepared;
@@ -347,16 +517,28 @@ export class SunatClient {
       result = await waitForDespatch(() => this.fetchTicket(receipt.ticket), baseName, receipt.ticket, options);
     } catch (error) {
       const statusError = error instanceof Error ? error : new Error(String(error));
-      return { status: 'pending', baseName, ticket: receipt.ticket, statusError };
+      return { status: DespatchStatus.pending, baseName, ticket: receipt.ticket, statusError };
     }
     return this.attachPdf(result, options.downloadPdf);
   }
 
   /**
-   * Consulta el resultado de una GRE ya enviada, a partir de su ticket.
-   * Con `downloadPdf: true`, si quedó aceptada, baja también el PDF oficial (ver `sendDespatch`).
+   * Consulta el resultado de una GRE ya enviada, a partir de su ticket (por ejemplo, tras un `pending` de
+   * `sendDespatch`). Es de solo lectura: consulta una vez, con reintentos ante fallos pasajeros, sin esperar.
+   *
+   * @param ref - `baseName` y `ticket` del resultado `pending`.
+   * @param options - `downloadPdf: true` para bajar también el PDF oficial si quedó aceptada.
+   * @returns El mismo tipo de resultado que `sendDespatch`; `pending` si SUNAT sigue procesando.
+   * @throws {SunatValidationError} Si el cliente no tiene configuradas las credenciales de API (`gre`).
+   * @throws {SunatApiError} Si SUNAT responde con un error (credenciales, ticket inexistente…).
+   * @throws {SunatTransportError} Si la consulta falla por red tras los reintentos (el ticket sigue sirviendo).
+   *
+   * @example
+   * ```ts
+   * const later = await client.getDespatchStatus({ baseName, ticket }, { downloadPdf: true });
+   * ```
    */
-  async getDespatchStatus(ref: { baseName: string; ticket: string }, options: Pick<DespatchSendOptions, 'downloadPdf'> = {}): Promise<DespatchResult> {
+  async getDespatchStatus(ref: DespatchTicketRef, options: DespatchStatusOptions = {}): Promise<DespatchResult> {
     // Consulta única (sin sondeo), pero con reintentos: es una lectura sin efecto.
     const fetchStatus = () => withRetries(() => this.fetchTicket(ref.ticket), isRetryableRead, this.config.retry);
     const result = await waitForDespatch(fetchStatus, ref.baseName, ref.ticket, { maxWaitMs: 0 });
@@ -366,7 +548,7 @@ export class SunatClient {
   /** Baja el PDF oficial de una guía aceptada sin convertir un fallo de descarga en un error del envío. */
   private async attachPdf(result: DespatchResult, enabled: boolean | undefined): Promise<DespatchResult> {
     if (!enabled) return result;
-    if (result.status !== 'accepted' && result.status !== 'accepted_with_observations') return result;
+    if (result.status !== DespatchStatus.accepted && result.status !== DespatchStatus.acceptedWithObservations) return result;
     const qrUrl = result.cdr.qrUrl;
     if (!qrUrl) return { ...result, pdfError: new SunatError('El CDR no trae la URL del QR; no hay PDF que descargar.') };
     try {
@@ -377,10 +559,17 @@ export class SunatClient {
   }
 
   /**
-   * Descarga el PDF oficial de una GRE aceptada desde la URL del QR del CDR (`cdr.qrUrl`).
-   * No requiere credenciales; solo acepta URLs https de sunat.gob.pe.
+   * Descarga el PDF oficial de una GRE aceptada desde la URL del QR de su CDR (`cdr.qrUrl`). Sirve para reintentar
+   * cuando `sendDespatch` con `downloadPdf` devolvió `pdfError`. No requiere credenciales.
+   *
+   * @param qrUrl - `cdr.qrUrl` de la guía aceptada. Solo se aceptan URLs https de `*.sunat.gob.pe`.
+   * @param options - `retry`: reintentos ante fallos de red o 5xx (4 por defecto, con pausas que se duplican desde 0,5 s).
+   * @returns El PDF (`pdf`) y el nombre de archivo que sugiere SUNAT (`fileName`), si es seguro.
+   * @throws {SunatValidationError} Si la URL (o una redirección) no es https de sunat.gob.pe.
+   * @throws {SunatApiError} Si SUNAT responde con un error o con algo que no es un PDF.
+   * @throws {SunatTransportError} Si la descarga falla por red tras los reintentos.
    */
-  async downloadDespatchPdf(qrUrl: string, options: Pick<DespatchPdfOptions, 'retries' | 'retryDelayMs'> = {}): Promise<DespatchPdf> {
+  async downloadDespatchPdf(qrUrl: string, options: DespatchPdfRetryOptions = {}): Promise<DespatchPdf> {
     return downloadDespatchPdf(qrUrl, { ...this.restOptions(), ...options });
   }
 

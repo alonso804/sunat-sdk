@@ -1,5 +1,6 @@
 import { isSunatHttpsUrl } from '../cdr';
 import { SunatApiError, SunatError, SunatTransportError, SunatValidationError } from '../errors';
+import type { RetryOptions } from '../retry';
 
 export type DespatchPdfOptions = {
   fetch?: typeof fetch;
@@ -9,10 +10,11 @@ export type DespatchPdfOptions = {
    * 20 s), así que conviene cortar pronto y reintentar.
    */
   timeoutMs?: number;
-  /** Reintentos ante fallos de red, esperas agotadas o errores 408/429/5xx de SUNAT. Por defecto 4. */
-  retries?: number;
-  /** Pausa entre reintentos. Por defecto 0,5 s, y se duplica en cada uno. */
-  retryDelayMs?: number;
+  /**
+   * Reintentos ante fallos de red, esperas agotadas o errores 408/429/5xx de SUNAT. Por defecto 4 reintentos con
+   * pausas desde 0,5 s que se duplican: más y antes que en el resto del SDK, porque este servicio se cuelga a ratos.
+   */
+  retry?: RetryOptions;
 };
 
 export type DespatchPdf = {
@@ -60,16 +62,31 @@ function fileNameFrom(header: string | null): string | undefined {
  * que abre el QR impreso: SUNAT la responde con un archivo PDF (no con una página), por eso al escanearla con
  * el teléfono "se descarga" el PDF.
  *
- * Por seguridad solo acepta URLs `https` de `*.sunat.gob.pe`.
+ * Por seguridad solo acepta URLs `https` de `*.sunat.gob.pe`, también en las redirecciones. No necesita credenciales;
+ * si ya tienes un `SunatClient`, puedes usar su método `downloadDespatchPdf`, que reutiliza su `fetch` y su timeout.
+ *
+ * @param qrUrl - `cdr.qrUrl` de una guía aceptada.
+ * @param options - `fetch` propio, tiempo máximo por intento (10 s por defecto) y reintentos ante fallos de red o 5xx
+ *   (4 por defecto, con pausas que se duplican desde 0,5 s).
+ * @returns El PDF (`pdf`) y el nombre de archivo que sugiere SUNAT (`fileName`), solo si es un nombre seguro.
+ * @throws {SunatValidationError} Si la URL (o una redirección) no es https de sunat.gob.pe.
+ * @throws {SunatApiError} Si SUNAT responde con un error (p. ej. 404) o con algo que no es un PDF.
+ * @throws {SunatTransportError} Si la descarga falla por red tras los reintentos.
+ *
+ * @example
+ * ```ts
+ * const { pdf, fileName } = await downloadDespatchPdf(cdr.qrUrl!);
+ * await writeFile(fileName ?? 'guia.pdf', pdf);
+ * ```
  */
 export async function downloadDespatchPdf(qrUrl: string, options: DespatchPdfOptions = {}): Promise<DespatchPdf> {
   if (!isSunatHttpsUrl(qrUrl)) {
     throw new SunatValidationError('La URL del QR debe ser https y de un dominio sunat.gob.pe.', [{ path: 'qrUrl', message: 'URL no permitida' }]);
   }
   const doFetch = options.fetch ?? fetch;
-  const retries = Math.max(0, options.retries ?? 4);
+  const retries = Math.max(0, options.retry?.maxRetries ?? 4);
   const host = new URL(qrUrl).host;
-  let delay = options.retryDelayMs ?? 500;
+  let delay = options.retry?.delayMs ?? 500;
   let lastError: Error | undefined;
 
   for (let attempt = 0; attempt <= retries; attempt++) {

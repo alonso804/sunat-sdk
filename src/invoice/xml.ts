@@ -1,10 +1,10 @@
 import { AFFECTATIONS, DOCUMENT_TYPE, IDENTITY_TYPE } from '../catalogs';
 import { D, fmt2, fmtUpTo, type Dec } from '../money';
-import { amountInWords } from '../numero-a-letras';
+import { amountInWords } from '../amount-in-words';
 import { escapeXml as esc, limaDateTime, SIGNATURE_ID, singleLine } from '../xml';
 import type { CalculatedInvoice, CalculatedLine } from './calculate';
 import type { ResolvedPayment } from './payment';
-import type { Invoice, Issuer } from './schema';
+import { PaymentType, type Invoice, type Issuer } from './schema';
 
 const NAMESPACES = [
   'xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"',
@@ -17,7 +17,7 @@ const NAMESPACES = [
 /** Forma de pago (anexo 9-A de la RS 193-2020/SUNAT): contado, o crédito con el monto neto pendiente y una línea por cuota. */
 function paymentTerms(payment: ResolvedPayment, currency: string): string {
   const head = '<cac:PaymentTerms><cbc:ID>FormaPago</cbc:ID>';
-  if (payment.type === 'cash') return `${head}<cbc:PaymentMeansID>Contado</cbc:PaymentMeansID></cac:PaymentTerms>`;
+  if (payment.type === PaymentType.cash) return `${head}<cbc:PaymentMeansID>Contado</cbc:PaymentMeansID></cac:PaymentTerms>`;
   const installments = payment.installments
     .map(
       (i) =>

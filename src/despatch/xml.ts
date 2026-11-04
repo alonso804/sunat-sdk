@@ -2,6 +2,7 @@ import {
   DESPATCH_INDICATORS,
   RELATED_DOCUMENT_TYPES,
   TRANSPORT_MODE,
+  TransportMode,
   type IdentityType,
 } from '../catalogs';
 import { dec, fmtFixed, fmtUpTo } from '../money';
@@ -92,7 +93,7 @@ export function buildDespatchXml(params: {
 }): string {
   const { issuer, despatch: d, recipient, issuedAt } = params;
   const { date, time } = limaDateTime(issuedAt);
-  const isPrivate = d.transportMode === 'private';
+  const isPrivate = d.transportMode === TransportMode.private;
   const includeVehicleAndDrivers = isPrivate || Boolean(d.indicators.carrierVehicleAndDrivers);
 
   const indicators: string[] = [];
