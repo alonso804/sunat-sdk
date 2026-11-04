@@ -5,7 +5,7 @@
  */
 import { SunatClient } from '../src';
 import { calculateInvoice } from '../src/invoice/calculate';
-import { type ResolvedPayment } from '../src/invoice/payment';
+import type { ResolvedPayment } from '../src/invoice/payment';
 import { InvoiceSchema } from '../src/invoice/schema';
 import { buildInvoiceXml, invoiceBaseName } from '../src/invoice/xml';
 import { D } from '../src/money';

@@ -77,7 +77,7 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
 
     // 2) envío: nombre sin extensión en la ruta, Bearer y cuerpo con ZIP + SHA-256
     expect(sendCall?.url).toBe(`https://api-cpe.sunat.gob.pe/v1/contribuyente/gem/comprobantes/${BASE}`);
-    expect((sendCall?.init.headers as Record<string, string>).Authorization).toBe('Bearer TOKEN-1');
+    expect((sendCall!.init.headers as Record<string, string>).Authorization).toBe('Bearer TOKEN-1');
     const body = JSON.parse(String(sendCall?.init.body)) as { archivo: { nomArchivo: string; arcGreZip: string; hashZip: string } };
     expect(body.archivo.nomArchivo).toBe(`${BASE}.zip`);
     const zip = new Uint8Array(Buffer.from(body.archivo.arcGreZip, 'base64'));
@@ -144,7 +144,9 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
     /** Reloj simulado: cada pausa avanza el tiempo, para que la espera se agote. */
     function clockOptions(maxWaitMs: number) {
       let clock = 0;
-      return { pollIntervalMs: 1000, maxWaitMs, sleep: async (ms: number) => void (clock += ms), now: () => clock };
+      return { pollIntervalMs: 1000, maxWaitMs, sleep: async (ms: number) => {
+        clock += ms;
+      }, now: () => clock };
     }
 
     it('un corte de red persistente devuelve pending con el ticket (no lanza)', async () => {
@@ -228,7 +230,7 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
     await client.sendDespatch(client.prepareDespatch(sampleDespatch({ number: 3 })), fastPolling);
     const tokenCalls = calls.filter((c) => c.url.includes('oauth2/token'));
     expect(tokenCalls.length).toBe(2);
-    expect((calls[calls.length - 2]?.init.headers as Record<string, string>).Authorization).toBe('Bearer TOKEN-2');
+    expect((calls[calls.length - 2]!.init.headers as Record<string, string>).Authorization).toBe('Bearer TOKEN-2');
   });
 
   it('si SUNAT rechaza el token en caché (401), renueva y reintenta una vez', async () => {

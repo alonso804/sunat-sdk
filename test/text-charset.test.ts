@@ -25,7 +25,7 @@ describe('toLatin1Text', () => {
   });
 
   it('cambia espacios especiales por espacios y quita invisibles y emojis', () => {
-    expect(toLatin1Text('A B​C')).toBe('A BC');
+    expect(toLatin1Text('A\u2009B\u200BC')).toBe('A BC');
     expect(toLatin1Text('Cemento 👍 OK')).toBe('Cemento  OK');
   });
 });

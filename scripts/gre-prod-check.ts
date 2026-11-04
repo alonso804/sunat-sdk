@@ -75,10 +75,11 @@ const issuer = {
   },
 };
 
-const signingKey =
-  stage === 'plan' && !process.env.SUNAT_CERT_PATH
-    ? (console.log('(plan) Sin SUNAT_CERT_PATH: se firma con un certificado autofirmado descartable.'), testCertificate().key)
-    : signingKeyFromPfx(readFileSync(need('SUNAT_CERT_PATH')), need('SUNAT_CERT_PASSWORD'));
+const useTestCertificate = stage === 'plan' && !process.env.SUNAT_CERT_PATH;
+if (useTestCertificate) console.log('(plan) Sin SUNAT_CERT_PATH: se firma con un certificado autofirmado descartable.');
+const signingKey = useTestCertificate
+  ? testCertificate().key
+  : signingKeyFromPfx(readFileSync(need('SUNAT_CERT_PATH')), need('SUNAT_CERT_PASSWORD'));
 
 const solUser = stage === 'plan' ? optional('SUNAT_SOL_USER', 'USUARIO') : need('SUNAT_SOL_USER');
 const solPassword = stage === 'plan' ? optional('SUNAT_SOL_PASSWORD', 'clave') : need('SUNAT_SOL_PASSWORD');

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { SunatApiError, SunatTransportError } from '../errors';
+import type { Untyped } from '../untyped';
 
 /**
  * Plataforma nueva de GRE (REST). Rutas según el manual "Servicios web - plataforma nueva GRE"
@@ -36,17 +37,17 @@ export type Token = {
   expiresAt: number;
 };
 
-async function readBody(response: Response): Promise<{ text: string; json: Record<string, any> | undefined }> {
+async function readBody(response: Response): Promise<{ text: string; json: Untyped | undefined }> {
   const text = await response.text();
   try {
     const parsed: unknown = JSON.parse(text);
-    return { text, json: parsed && typeof parsed === 'object' ? (parsed as Record<string, any>) : undefined };
+    return { text, json: parsed && typeof parsed === 'object' ? (parsed as Untyped) : undefined };
   } catch {
     return { text, json: undefined };
   }
 }
 
-function toApiError(status: number, body: { text: string; json: Record<string, any> | undefined }): SunatApiError {
+function toApiError(status: number, body: { text: string; json: Untyped | undefined }): SunatApiError {
   const json = body.json;
   const errors = Array.isArray(json?.errors) ? (json.errors as Array<Record<string, unknown>>) : [];
   const details = errors.map((e) => {
@@ -63,7 +64,7 @@ function toApiError(status: number, body: { text: string; json: Record<string, a
   return new SunatApiError(`${message} (HTTP ${status})`, status, code, details, body.text.slice(0, 1000));
 }
 
-async function request(url: string, init: RequestInit, options: RestOptions): Promise<{ status: number; json: Record<string, any> }> {
+async function request(url: string, init: RequestInit, options: RestOptions): Promise<{ status: number; json: Untyped }> {
   const doFetch = options.fetch ?? fetch;
   let response: Response;
   try {

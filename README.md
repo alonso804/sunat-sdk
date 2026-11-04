@@ -361,6 +361,8 @@ Plan por etapas (el paquete no depende de cómo viva el repositorio):
 | Comando | Qué hace |
 |---|---|
 | `pnpm test` | pruebas unitarias (sin red) |
+| `pnpm check` | Biome: formato, linter y orden de imports (no modifica nada; también corre antes de publicar) |
+| `pnpm check:fix` | Biome: aplica el formato, el orden de imports y los arreglos seguros del linter |
 | `pnpm test:beta` | pruebas contra SUNAT beta (red, sin efecto tributario) |
 | `pnpm tsx scripts/beta-smoke.ts` | envía una factura de prueba a beta |
 | `pnpm tsx scripts/beta-faults.ts [a b c d e ok]` | envía XML defectuosos a propósito para ver errores reales |

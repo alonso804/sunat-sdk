@@ -81,7 +81,7 @@ describe('SunatClient.getInvoiceStatus', () => {
 
     const [url, init] = mock.mock.calls[0]!;
     expect(String(url)).toBe('https://e-factura.sunat.gob.pe/ol-it-wsconscpegem/billConsultService');
-    expect((init?.headers as Record<string, string>).SOAPAction).toBe('urn:getStatusCdr');
+    expect((init!.headers as Record<string, string>).SOAPAction).toBe('urn:getStatusCdr');
     const body = String(init?.body);
     expect(body).toContain(`<wsse:Username>${TEST_RUC}USUARIO1</wsse:Username>`); // RUC + usuario SOL
     expect(body).toContain(`<rucComprobante>${TEST_RUC}</rucComprobante>`); // siempre el emisor del cliente

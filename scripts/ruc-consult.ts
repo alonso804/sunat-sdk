@@ -34,7 +34,9 @@ for (const ruc of rucs) {
   let page: string | undefined;
   try {
     const data = await consultRuc(ruc, {
-      ...(dump ? { onPage: (html: string) => void (page = html) } : {}),
+      ...(dump ? { onPage: (html: string) => {
+        page = html;
+      } } : {}),
     });
     if (page && dump) await writeFile(join('out', `ruc-consult-${data.ruc}.html`), page, 'utf8');
 

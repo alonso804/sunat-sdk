@@ -45,9 +45,13 @@
   },
   "scripts": {
     "build": "tsup",
-    "prepublishOnly": "tsc --noEmit && vitest run && tsup",
+    "prepublishOnly": "biome check && tsc --noEmit && vitest run && tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
+    "lint": "biome lint",
+    "format": "biome format --write",
+    "check": "biome check",
+    "check:fix": "biome check --write",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:beta": "SUNAT_BETA=1 vitest run test/beta.integration.test.ts"
@@ -61,6 +65,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.6.4",
     "@types/node": "26.6.6",
     "@types/node-forge": "1.3.14",
     "tsup": "9.0.0",

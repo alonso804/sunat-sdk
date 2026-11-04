@@ -1,5 +1,6 @@
 import { XMLParser } from 'fast-xml-parser';
 import { SunatError } from './errors';
+import type { Untyped } from './untyped';
 import { unzipFiles } from './zip';
 
 /** Constancia de Recepción (CDR) que SUNAT devuelve al procesar un comprobante. */
@@ -45,7 +46,7 @@ function text(value: unknown): string {
 }
 
 export function parseCdrXml(xml: string): Cdr {
-  const parsed = parser.parse(xml) as Record<string, any>;
+  const parsed = parser.parse(xml) as Untyped;
   const root = parsed.ApplicationResponse;
   const response = root?.DocumentResponse?.Response;
   if (!root || !response) throw new SunatError('El CDR de SUNAT no tiene el formato esperado.');

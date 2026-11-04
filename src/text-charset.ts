@@ -22,17 +22,17 @@ export type TextCharset = (typeof TextCharset)[keyof typeof TextCharset];
 /** Equivalentes de los caracteres tipográficos más comunes fuera de Latin-1 (los que suelen llegar al copiar y pegar). */
 const REPLACEMENTS: Record<string, string> = {
   // Comillas y apóstrofos
-  '‘': "'", '’': "'", '‚': "'", '‛': "'", '′': "'",
-  '“': '"', '”': '"', '„': '"', '‟': '"', '″': '"',
+  '\u2018': "'", '\u2019': "'", '\u201A': "'", '\u201B': "'", '\u2032': "'",
+  '\u201C': '"', '\u201D': '"', '\u201E': '"', '\u201F': '"', '\u2033': '"',
   // Guiones y signo menos
-  '‐': '-', '‑': '-', '‒': '-', '–': '-', '—': '-', '―': '-', '−': '-',
+  '\u2010': '-', '\u2011': '-', '\u2012': '-', '\u2013': '-', '\u2014': '-', '\u2015': '-', '\u2212': '-',
   // Viñetas
-  '•': '-', '‣': '-', '⁃': '-',
+  '\u2022': '-', '\u2023': '-', '\u2043': '-',
   // Otros signos
-  '…': '...', '€': 'EUR', '™': 'TM', '№': 'No',
+  '\u2026': '...', '\u20AC': 'EUR', '\u2122': 'TM', '\u2116': 'No',
   // Espacios especiales → espacio; invisibles → nada
-  ' ': ' ', ' ': ' ', ' ': ' ', ' ': ' ', ' ': ' ', ' ': ' ', ' ': ' ', '　': ' ',
-  '​': '', '‌': '', '‍': '', '⁠': '', '﻿': '',
+  '\u2002': ' ', '\u2003': ' ', '\u2007': ' ', '\u2009': ' ', '\u200A': ' ', '\u202F': ' ', '\u205F': ' ', '\u3000': ' ',
+  '\u200B': '', '\u200C': '', '\u200D': '', '\u2060': '', '\uFEFF': '',
 };
 
 const isLatin1 = (text: string): boolean => [...text].every((char) => char.codePointAt(0)! <= 0xff);
