@@ -8,5 +8,5 @@ Cada archivo conserva su aviso de derechos: "Copyright (c) OASIS Open 2013. All 
 Se incluyen únicamente `maindoc/UBL-Invoice-2.1.xsd`, `maindoc/UBL-DespatchAdvice-2.1.xsd` y la carpeta `common/`
 (dependencias de ambos).
 
-La validación usa `xmllint` (viene con macOS y con `libxml2-utils` en Debian/Ubuntu); si no está instalado,
-las pruebas de esquema se omiten.
+La validación usa `xmllint-wasm` (libxml2 compilado a WebAssembly, dependencia de desarrollo): no hace falta instalar
+`xmllint` en el sistema, así que las pruebas de esquema corren igual en Windows, macOS, Linux y CI.

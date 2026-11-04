@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SunatClient, SunatValidationError } from '../src';
-import { hasXmllint, sampleInvoice, TEST_ISSUER, testCertificate, validateAgainstUbl } from './helpers';
+import { sampleInvoice, TEST_ISSUER, testCertificate, validateAgainstUbl } from './helpers';
 
 const { key } = testCertificate();
 const client = new SunatClient({
@@ -200,8 +200,8 @@ describe('orden de compra y guías relacionadas', () => {
   });
 });
 
-describe.skipIf(!hasXmllint)('esquema UBL 2.1 oficial', () => {
-  it('el XML de crédito con orden de compra y guías es válido', () => {
+describe('esquema UBL 2.1 oficial', () => {
+  it('el XML de crédito con orden de compra y guías es válido', async () => {
     const { signedXml } = client.prepareInvoice(
       sampleInvoice({
         ...oneItem,
@@ -210,8 +210,8 @@ describe.skipIf(!hasXmllint)('esquema UBL 2.1 oficial', () => {
         relatedDespatches: [{ series: 'T001', number: 15 }],
       }),
     );
-    const result = validateAgainstUbl(signedXml, 'Invoice');
-    expect(result.errors).toBe('- validates');
+    const result = await validateAgainstUbl(signedXml, 'Invoice');
+    expect(result.errors).toBe('');
     expect(result.valid).toBe(true);
   });
 });

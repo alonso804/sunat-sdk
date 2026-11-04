@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SunatClient } from '../src';
 import { verifyUblSignature } from '../src/signing/xmldsig';
 import { unzipFiles, zipSingleFile } from '../src/zip';
-import { hasXmllint, sampleDespatch, sampleInvoice, TEST_ISSUER, testCertificate, validateAgainstUbl } from './helpers';
+import { sampleDespatch, sampleInvoice, TEST_ISSUER, testCertificate, validateAgainstUbl } from './helpers';
 
 const { key } = testCertificate();
 const client = new SunatClient({
@@ -48,19 +48,23 @@ describe('tildes y caracteres especiales (UTF-8)', () => {
     expect(verifyUblSignature(received, key.certificatePem)).toBe(true);
   });
 
-  it.skipIf(!hasXmllint)('el XML con tildes es válido contra el esquema UBL', () => {
+  it('el XML con tildes es válido contra el esquema UBL', async () => {
     expect(
-      validateAgainstUbl(
-        client.prepareDespatch(sampleDespatch({ items: [{ description: ACCENTS, quantity: 1 }] })).signedXml,
-        'DespatchAdvice',
+      (
+        await validateAgainstUbl(
+          client.prepareDespatch(sampleDespatch({ items: [{ description: ACCENTS, quantity: 1 }] })).signedXml,
+          'DespatchAdvice',
+        )
       ).errors,
-    ).toBe('- validates');
+    ).toBe('');
     expect(
-      validateAgainstUbl(
-        client.prepareInvoice(sampleInvoice({ items: [{ description: ACCENTS, quantity: 1, unitPrice: 5 }] }))
-          .signedXml,
-        'Invoice',
+      (
+        await validateAgainstUbl(
+          client.prepareInvoice(sampleInvoice({ items: [{ description: ACCENTS, quantity: 1, unitPrice: 5 }] }))
+            .signedXml,
+          'Invoice',
+        )
       ).errors,
-    ).toBe('- validates');
+    ).toBe('');
   });
 });

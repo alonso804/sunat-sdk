@@ -1,7 +1,7 @@
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { readdirSync, readFileSync } from 'node:fs';
 import { strToU8 } from 'fflate';
 import forge from 'node-forge';
+import { validateXML } from 'xmllint-wasm';
 import type { DespatchInput, InvoiceInput, IssuerInput } from '../src';
 import type { SigningKey } from '../src/signing/certificate';
 import { zipSingleFile } from '../src/zip';
@@ -71,18 +71,41 @@ export function sampleDespatch(overrides: Partial<DespatchInput> = {}): Despatch
   };
 }
 
-const XSD_FILES = {
-  Invoice: fileURLToPath(new URL('./xsd/ubl-2.1/maindoc/UBL-Invoice-2.1.xsd', import.meta.url)),
-  DespatchAdvice: fileURLToPath(new URL('./xsd/ubl-2.1/maindoc/UBL-DespatchAdvice-2.1.xsd', import.meta.url)),
-};
+/** Esquemas UBL 2.1 de OASIS (test/xsd): el principal de cada documento está en maindoc/ e importa los de common/. */
+const XSD_DIR = new URL('./xsd/ubl-2.1/', import.meta.url);
+const XSD_MAIN = { Invoice: 'UBL-Invoice-2.1.xsd', DespatchAdvice: 'UBL-DespatchAdvice-2.1.xsd' } as const;
 
-/** `xmllint` viene con macOS y con libxml2-utils; si falta, las pruebas de esquema se omiten. */
-export const hasXmllint = spawnSync('xmllint', ['--version']).status === 0;
+type SchemaFile = { fileName: string; contents: string };
+let commonSchemas: SchemaFile[] | undefined;
 
-/** Valida un XML contra el esquema UBL 2.1 oficial de OASIS (el que usa SUNAT). */
-export function validateAgainstUbl(xml: string, type: keyof typeof XSD_FILES): { valid: boolean; errors: string } {
-  const result = spawnSync('xmllint', ['--noout', '--schema', XSD_FILES[type], '-'], { input: xml, encoding: 'utf8' });
-  return { valid: result.status === 0, errors: `${result.stderr}`.trim() };
+/** Los esquemas de common/ que importan los principales (se leen una sola vez). */
+function loadCommonSchemas(): SchemaFile[] {
+  if (!commonSchemas) {
+    const dir = new URL('common/', XSD_DIR);
+    commonSchemas = readdirSync(dir).map((name) => ({
+      fileName: `common/${name}`,
+      contents: readFileSync(new URL(name, dir), 'utf8'),
+    }));
+  }
+  return commonSchemas;
+}
+
+/**
+ * Valida un XML contra el esquema UBL 2.1 oficial de OASIS (el que usa SUNAT) con `xmllint-wasm`: libxml2 compilado a
+ * WebAssembly, así que no hace falta instalar xmllint y las pruebas corren igual en Windows, macOS, Linux y CI.
+ * `errors` queda vacío si el XML es válido.
+ */
+export async function validateAgainstUbl(
+  xml: string,
+  type: keyof typeof XSD_MAIN,
+): Promise<{ valid: boolean; errors: string }> {
+  const main = `maindoc/${XSD_MAIN[type]}`;
+  const result = await validateXML({
+    xml: [{ fileName: 'document.xml', contents: xml }],
+    schema: [{ fileName: main, contents: readFileSync(new URL(main, XSD_DIR), 'utf8') }],
+    preload: loadCommonSchemas(),
+  });
+  return { valid: result.valid, errors: result.errors.map((error) => error.message).join('\n') };
 }
 
 /** `arcCdr` de la API de guías: el CDR dentro de un ZIP, en base64. */
