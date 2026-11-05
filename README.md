@@ -342,12 +342,23 @@ Plan por etapas (el paquete no depende de cómo viva el repositorio):
    sea el del dueño). El nombre sin scope `sunat-sdk` **ya existe en el npm público** (otro autor): no se puede publicar
    ahí y, desde un registro sin scope, un proyecto podría instalar el paquete equivocado. `package.json` ya lleva
    `publishConfig.registry = https://npm.pkg.github.com` y `access: restricted`, así que nunca sube al npm público.
-   - **Publicar** (una vez por versión; antes se corre `pnpm prepublishOnly`, que hace typecheck, pruebas y build):
-     `pnpm publish`. Requiere en tu `~/.npmrc` (fuera del repo) la línea
-     `//npm.pkg.github.com/:_authToken=<PAT classic con write:packages>`. _(Aún no se ha publicado ninguna versión: este
-     procedimiento sigue la documentación de GitHub y falta comprobarlo.)_
+   - **Publicar (automático, workflow `Release`)**: sube `version` en `package.json`, haz commit en `main` y sube
+     una etiqueta con esa versión: `git tag -s v0.2.0 -m v0.2.0 && git push origin v0.2.0`. El workflow comprueba que
+     la etiqueta coincida con `package.json` y esté en `main`, corre `prepublishOnly` (Biome, typecheck, pruebas y
+     build) y publica con el token del propio workflow: no hace falta ningún token personal. Si GitHub lo rechaza con
+     403, en la página del paquete → _Package settings_ → **Manage Actions access**, agrega este repositorio con rol
+     _Write_.
+   - **Publicar a mano (alternativa)**: así se publicó la 0.1.0. Agrega el permiso con
+     `gh auth refresh -h github.com -s write:packages,read:packages`, publica con `npm publish` usando un
+     `.npmrc` temporal con `//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}` y
+     `NODE_AUTH_TOKEN=$(gh auth token)`, y quita el permiso después con
+     `gh auth refresh -h github.com -r write:packages,read:packages`.
    - **Consumir**: en el proyecto de la app, un `.npmrc` con `@alonso804:registry=https://npm.pkg.github.com` y
-     `//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}` (PAT _classic_ con `read:packages`; no se sube a git).
+     `//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}` (PAT _classic_ con `read:packages`; el `.npmrc` sí
+     puede ir en git, el token no). No uses el nombre `GITHUB_TOKEN` en tu máquina: si existe, `gh` lo usa en
+     lugar de tus cuentas.
+   - **CI**: cada push corre el workflow `CI` (Biome, typecheck, pruebas y build) en una máquina limpia con
+     Linux; las pruebas contra SUNAT beta no corren ahí.
 3. **Plan B: monorepo.** Mover esta carpeta a `packages/sunat-sdk` y consumirla con `"@alonso804/sunat-sdk": "workspace:*"`
    (sin registro ni tokens).
 

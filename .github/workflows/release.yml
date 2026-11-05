@@ -1,0 +1,58 @@
+name: Release
+
+# Publica el paquete en GitHub Packages (privado) al subir una etiqueta de versión, por ejemplo v0.2.0:
+#   1. Sube "version" en package.json y haz commit en main.
+#   2. git tag -s v0.2.0 -m v0.2.0 && git push origin v0.2.0   (etiqueta firmada: tu git tiene tag.gpgsign)
+# Usa el token del propio workflow (GITHUB_TOKEN con packages: write): no hace falta ningún token personal.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write
+
+# Nunca dos publicaciones a la vez.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publicar en GitHub Packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # historial completo, para comprobar que la etiqueta está en main
+
+      - name: La etiqueta coincide con package.json y está en main
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [ "$expected" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::La etiqueta $GITHUB_REF_NAME no coincide con la versión de package.json ($expected)."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::La etiqueta $GITHUB_REF_NAME apunta a un commit que no está en main."
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.28.10
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          registry-url: https://npm.pkg.github.com
+          scope: "@alonso804"
+
+      - run: pnpm install --frozen-lockfile
+
+      # `prepublishOnly` corre biome check, typecheck, tests y build antes de publicar: si algo falla, no se publica.
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
