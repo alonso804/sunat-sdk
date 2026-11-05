@@ -22,6 +22,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false # no deja el token en .git/config al alcance de los pasos siguientes
 
       - uses: pnpm/action-setup@v6
         with:

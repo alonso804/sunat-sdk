@@ -344,8 +344,9 @@ Plan por etapas (el paquete no depende de cómo viva el repositorio):
    `publishConfig.registry = https://npm.pkg.github.com` y `access: restricted`, así que nunca sube al npm público.
    - **Publicar (automático, workflow `Release`)**: sube `version` en `package.json`, haz commit en `main` y sube
      una etiqueta con esa versión: `git tag -s v0.2.0 -m v0.2.0 && git push origin v0.2.0`. El workflow comprueba que
-     la etiqueta coincida con `package.json` y esté en `main`, corre `prepublishOnly` (Biome, typecheck, pruebas y
-     build) y publica con el token del propio workflow: no hace falta ningún token personal. Si GitHub lo rechaza con
+     la etiqueta coincida con `package.json` y esté en `main`, corre Biome, typecheck, pruebas y build, y publica con
+     `npm publish --ignore-scripts` usando el token del propio workflow, que solo existe en ese último paso: no hace
+     falta ningún token personal. Si GitHub lo rechaza con
      403, en la página del paquete → _Package settings_ → **Manage Actions access**, agrega este repositorio con rol
      _Write_.
    - **Publicar a mano (alternativa)**: así se publicó la 0.1.0. Agrega el permiso con
