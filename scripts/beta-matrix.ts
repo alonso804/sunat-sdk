@@ -67,15 +67,15 @@ for (let i = 1; i <= count; i++) {
   await sleep(2000);
   try {
     const result = await client.sendInvoice(prepared);
-    if (result.status === 'accepted' || result.status === 'accepted_with_observations') {
+    if (result.status === 'rejected') {
+      failures.push(label);
+      console.log(`✘ ${label}\n    ${result.code}: ${result.message}`);
+      console.log('    líneas:', JSON.stringify(input.items));
+    } else {
       ok++;
       console.log(
         `✔ ${label}${result.status === 'accepted_with_observations' ? ` (obs: ${result.cdr.notes.join(' | ')})` : ''}`,
       );
-    } else {
-      failures.push(label);
-      console.log(`✘ ${label}\n    ${result.code}: ${result.message}`);
-      console.log('    líneas:', JSON.stringify(input.items));
     }
   } catch (error) {
     failures.push(label);

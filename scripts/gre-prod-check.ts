@@ -12,7 +12,8 @@
  *             registrar nada. Prueba envío, ticket y lectura de errores.
  *             OJO: el 2026-11-01 se comprobó que SUNAT NO valida la firma de una GRE (aceptó una guía con el
  *             peso alterado tras firmar), por eso aquí se altera una regla de negocio y no la firma. Si SUNAT
- *             también aceptara esta, quedaría una guía real: se da de baja en SOL (serie TZ01).
+ *             también aceptara esta, quedaría una guía real: se da de baja en SOL (serie TZ01). Por eso pide
+ *             la misma confirmación escrita que positive.
  *   positive  Emite UNA guía de prueba REAL (efecto en SUNAT). Pide confirmación escrita. Se puede dar de
  *             baja en SOL mientras el traslado no haya iniciado (art. 8 de la RS 000123-2022/SUNAT).
  *
@@ -38,7 +39,7 @@ import {
 import { parseCdrXml } from '../src/cdr';
 import { requestToken } from '../src/gre/api';
 import { unzipFiles } from '../src/zip';
-import { hasXmllint, testCertificate, validateAgainstUbl } from '../test/helpers';
+import { testCertificate, validateAgainstUbl } from '../test/helpers';
 
 const stage = process.argv[2] ?? 'plan';
 if (!['plan', 'auth', 'negative', 'positive', 'pdf'].includes(stage)) {
@@ -122,14 +123,36 @@ function show(prepared: PreparedDespatch): void {
   for (const warning of prepared.warnings) console.log(` - ${warning}`);
 }
 
-function checkSchema(prepared: PreparedDespatch): void {
-  if (!hasXmllint) {
-    console.log('\n(xmllint no está instalado: se omite la validación contra el esquema UBL)');
-    return;
-  }
-  const result = validateAgainstUbl(prepared.signedXml, 'DespatchAdvice');
+/** Valida el XML firmado contra el esquema UBL 2.1 (xmllint-wasm, sin red). Si no es válido, se detiene. */
+async function checkSchema(prepared: PreparedDespatch): Promise<void> {
+  const result = await validateAgainstUbl(prepared.signedXml, 'DespatchAdvice');
   console.log(`\nValidación contra el esquema UBL 2.1: ${result.valid ? 'OK' : `FALLÓ\n${result.errors}`}`);
   if (!result.valid) process.exit(1);
+}
+
+/**
+ * Pide la confirmación escrita `ENVIAR <nombre>` antes de cualquier envío a producción; sin ella no se envía nada.
+ * Se escribe en la terminal o, si la terminal no es interactiva (p. ej. el prefijo `!` de Claude Code), se pasa en
+ * GRE_CONFIRM="ENVIAR <nombre>". El nombre identifica la guía exacta, así que una confirmación no sirve para otra.
+ */
+async function confirmOrExit(prepared: PreparedDespatch, stageName: string): Promise<void> {
+  let answer = process.env.GRE_CONFIRM ?? '';
+  if (!answer) {
+    if (!process.stdin.isTTY) {
+      console.log('\nEsta terminal no es interactiva, así que no puedo pedirte la confirmación. Nada se envió.');
+      console.log(
+        `Vuelve a correrlo con:  GRE_CONFIRM="ENVIAR ${prepared.baseName}" pnpm tsx --env-file=.env scripts/gre-prod-check.ts ${stageName}`,
+      );
+      process.exit(0);
+    }
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    answer = await rl.question(`Escribe exactamente  ENVIAR ${prepared.baseName}  para confirmar: `);
+    rl.close();
+  }
+  if (answer.trim() !== `ENVIAR ${prepared.baseName}`) {
+    console.log('Cancelado. No se envió nada.');
+    process.exit(0);
+  }
 }
 
 function printError(error: unknown): never {
@@ -157,7 +180,7 @@ try {
   if (stage === 'plan') {
     const prepared = client.prepareDespatch(testDespatch(1));
     show(prepared);
-    checkSchema(prepared);
+    await checkSchema(prepared);
     console.log(`\nNombre de archivo: ${prepared.baseName}.zip  (nada se envió: etapa sin red)`);
   }
 
@@ -192,7 +215,7 @@ try {
 
   if (stage === 'negative') {
     const prepared = client.prepareDespatch(testDespatch(99_999_002));
-    checkSchema(prepared);
+    await checkSchema(prepared);
     // El motivo 99 no existe en el catálogo 20: el SDK no lo permitiría, así que se cambia directo en el XML.
     // SUNAT no valida la firma de las GRE (verificado el 2026-11-01), por eso no hace falta volver a firmar.
     const tampered: PreparedDespatch = {
@@ -200,6 +223,11 @@ try {
       signedXml: prepared.signedXml.replace('catalogo20">13</cbc:HandlingCode>', 'catalogo20">99</cbc:HandlingCode>'),
     };
     if (tampered.signedXml === prepared.signedXml) throw new Error('No se pudo alterar el XML de prueba.');
+    console.log(
+      '\nESTO ENVÍA A PRODUCCIÓN una guía que SUNAT debería rechazar. Si la aceptara, quedaría una guía REAL ' +
+        `(se da de baja en SOL mientras el traslado no inicie): ${prepared.baseName}`,
+    );
+    await confirmOrExit(prepared, 'negative');
     console.log(
       `Enviando ${prepared.baseName} con motivo de traslado inválido (99) a producción (debe ser rechazada)…`,
     );
@@ -219,27 +247,9 @@ try {
     const number = Number(optional('GRE_TEST_NUMBER', '1'));
     const prepared = client.prepareDespatch(testDespatch(number));
     show(prepared);
-    checkSchema(prepared);
+    await checkSchema(prepared);
     console.log('\nESTO CREA UNA GUÍA REAL EN SUNAT (se puede dar de baja en SOL mientras el traslado no inicie).');
-    // La confirmación es el texto exacto `ENVIAR <nombre>`: se escribe en la terminal o, si la terminal no es
-    // interactiva (p. ej. el prefijo `!` de Claude Code), se pasa en GRE_CONFIRM="ENVIAR <nombre>".
-    let answer = process.env.GRE_CONFIRM ?? '';
-    if (!answer) {
-      if (!process.stdin.isTTY) {
-        console.log(`\nEsta terminal no es interactiva, así que no puedo pedirte la confirmación. Nada se envió.`);
-        console.log(
-          `Vuelve a correrlo con:  GRE_CONFIRM="ENVIAR ${prepared.baseName}" pnpm tsx --env-file=.env scripts/gre-prod-check.ts positive`,
-        );
-        process.exit(0);
-      }
-      const rl = createInterface({ input: process.stdin, output: process.stdout });
-      answer = await rl.question(`Escribe exactamente  ENVIAR ${prepared.baseName}  para confirmar: `);
-      rl.close();
-    }
-    if (answer.trim() !== `ENVIAR ${prepared.baseName}`) {
-      console.log('Cancelado. No se envió nada.');
-      process.exit(0);
-    }
+    await confirmOrExit(prepared, 'positive');
     // Con downloadPdf el SDK intenta bajar el PDF oficial al emitir; si falla, la guía igual queda aceptada.
     const result = await client.sendDespatch(prepared, { downloadPdf: true });
     describe(result);

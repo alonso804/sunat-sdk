@@ -7,9 +7,11 @@
 import { InvoiceSchema, IssuerSchema, SunatFaultError } from '../src';
 import { ENDPOINTS } from '../src/config';
 import { calculateInvoice } from '../src/invoice/calculate';
+import { resolvePayment } from '../src/invoice/payment';
 import { buildInvoiceXml } from '../src/invoice/xml';
 import { signUblXml } from '../src/signing/xmldsig';
 import { sendBill } from '../src/soap/bill-service';
+import { limaDateTime } from '../src/xml';
 import { zipSingleFile } from '../src/zip';
 import { sampleInvoice, TEST_ISSUER, TEST_RUC, testCertificate } from '../test/helpers';
 
@@ -22,8 +24,12 @@ function freshNumber(offset: number): number {
 }
 
 function unsignedXml(number: number): string {
-  const invoice = InvoiceSchema.parse(sampleInvoice({ number, issuedAt: new Date() }));
-  return buildInvoiceXml({ issuer, invoice, calculation: calculateInvoice(invoice), issuedAt: new Date() });
+  const issuedAt = new Date();
+  const invoice = InvoiceSchema.parse(sampleInvoice({ number, issuedAt }));
+  const calculation = calculateInvoice(invoice);
+  // Igual que SunatClient.prepareInvoice: la forma de pago se resuelve contra el total y la fecha de emisión.
+  const payment = resolvePayment(invoice.payment, calculation.totals.payable, limaDateTime(issuedAt).date);
+  return buildInvoiceXml({ issuer, invoice, calculation, payment, issuedAt });
 }
 
 /** Imprime la respuesta cruda cuando no es un 200, para diagnosticar. */
