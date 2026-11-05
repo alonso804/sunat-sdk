@@ -41,13 +41,36 @@ export function curlFetch(options: CurlFetchOptions = {}): typeof fetch {
   const maxTime = Math.ceil(timeoutMs / 1000);
 
   return async function curl(url, init = {}) {
-    const args = ['-sS', '-i', url.toString(), '--max-time', String(maxTime)];
+    // Mismas garantías que fetch: la URL se valida (una inválida lanza TypeError) y solo se admiten http y https.
+    const target = new URL(url instanceof Request ? url.url : String(url));
+    if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+      throw new TypeError(`curlFetch solo admite http y https, no ${target.protocol}`);
+    }
+    if (init.method !== undefined && !/^[A-Za-z]+$/.test(init.method)) {
+      throw new TypeError(`Método HTTP inválido: ${init.method}`);
+    }
+    const headers = headerEntries(init);
+    for (const [name, value] of headers) {
+      if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || /[\r\n\0]/.test(value)) {
+        throw new TypeError(`Cabecera inválida: ${name}`);
+      }
+    }
+    const body = init.body === undefined || init.body === null ? undefined : String(init.body);
+
+    // Para que curl trate todo como datos y no como su propia sintaxis:
+    // -q (debe ir primero) ignora el .curlrc del usuario; --url hace que la URL nunca se lea como una opción;
+    // --globoff desactiva los patrones [1-3] y {a,b}; --proto impide otros esquemas; y el cuerpo va por stdin
+    // (--data-binary @-), así que un cuerpo que empiece con '@' no hace que curl lea un archivo local.
+    const args = ['-q', '-sS', '-i', '--globoff', '--proto', '=http,https', '--url', target.href];
+    args.push('--max-time', String(maxTime));
     if (init.method) args.push('-X', init.method);
-    for (const [name, value] of headerEntries(init)) args.push('-H', `${name}: ${value}`);
-    if (init.body !== undefined) args.push('--data-binary', String(init.body));
+    for (const [name, value] of headers) args.push('-H', `${name}: ${value}`);
+    if (body !== undefined) args.push('--data-binary', '@-');
 
     return new Promise<Response>((resolve, reject) => {
       const child = spawn(executable, args, { windowsHide: true });
+      child.stdin?.on('error', () => undefined); // curl puede salir antes de leer el cuerpo (p. ej. un error de red)
+      child.stdin?.end(body);
       const stdout: Buffer[] = [];
       let stderr = '';
       child.stdout?.on('data', (chunk: Buffer) => stdout.push(chunk));

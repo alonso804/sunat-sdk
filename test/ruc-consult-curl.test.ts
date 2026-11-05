@@ -1,6 +1,9 @@
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { curlFetch, isCurlAvailable } from '../src/ruc-consult';
 import { parseRucPage } from '../src/ruc-consult/parse';
@@ -27,7 +30,7 @@ function resultsPage(): string {
 describe('curlFetch (transporte con curl del sistema, sin red)', () => {
   let server: Server;
   let baseUrl: string;
-  let seen: Array<{ method?: string; headers: IncomingHttpHeaders; body: string }>;
+  let seen: Array<{ method?: string; url?: string; headers: IncomingHttpHeaders; body: string }>;
   let reply: { status: number; headers: Array<[string, string]>; body: Buffer };
 
   beforeAll(async () => {
@@ -35,7 +38,12 @@ describe('curlFetch (transporte con curl del sistema, sin red)', () => {
       const chunks: Buffer[] = [];
       req.on('data', (chunk: Buffer) => chunks.push(chunk));
       req.on('end', () => {
-        seen.push({ method: req.method, headers: req.headers, body: Buffer.concat(chunks).toString('utf8') });
+        seen.push({
+          method: req.method,
+          url: req.url,
+          headers: req.headers,
+          body: Buffer.concat(chunks).toString('utf8'),
+        });
         res.writeHead(reply.status, Object.fromEntries(reply.headers));
         res.end(reply.body);
       });
@@ -106,5 +114,58 @@ describe('curlFetch (transporte con curl del sistema, sin red)', () => {
 
   it.skipIf(!hasCurl)('detecta un curl del sistema disponible (base del fallback automático)', () => {
     expect(isCurlAvailable()).toBe(true);
+  });
+
+  describe('trata URL, cuerpo y cabeceras como datos, igual que fetch', () => {
+    const okReply = () => ({
+      status: 200,
+      headers: [['Content-Type', 'text/plain']] as Array<[string, string]>,
+      body: Buffer.from('ok'),
+    });
+
+    it.skipIf(!hasCurl)("un cuerpo que empieza con '@' se envía literal (no lee el archivo)", async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'sunat-sdk-curl-'));
+      try {
+        const canary = join(dir, 'canario.txt');
+        writeFileSync(canary, 'CANARIO-7f3a');
+        seen = [];
+        reply = okReply();
+        const response = await curlFetch()(baseUrl, {
+          method: 'POST',
+          body: `@${canary}`,
+          signal: AbortSignal.timeout(15_000),
+        });
+        expect(response.status).toBe(200);
+        expect(seen).toHaveLength(1);
+        expect(seen[0]!.body).toBe(`@${canary}`);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it.skipIf(!hasCurl)('no interpreta [1-3] de la URL como patrón: una sola petición', async () => {
+      seen = [];
+      reply = okReply();
+      await curlFetch()(`${baseUrl}/x[1-3]`, { signal: AbortSignal.timeout(15_000) });
+      expect(seen.map((s) => s.url)).toEqual(['/x[1-3]']);
+    });
+
+    // Con un ejecutable inexistente: si se intentara lanzar curl, el error sería 'no-existe-curl: spawn ...'.
+    it.each([
+      ['una URL que parece una opción de curl', '-V', 'Invalid URL'],
+      ['un esquema que no es http(s)', 'file:///etc/hosts', 'solo admite http y https'],
+    ])('rechaza %s sin ejecutar curl', async (_label, url, message) => {
+      const before = seen.length;
+      await expect(curlFetch({ executable: 'no-existe-curl' })(url)).rejects.toThrow(message);
+      expect(seen).toHaveLength(before);
+    });
+
+    it('rechaza cabeceras con saltos de línea y métodos inválidos sin ejecutar curl', async () => {
+      const run = curlFetch({ executable: 'no-existe-curl' });
+      await expect(run('http://127.0.0.1/', { headers: { 'X-A': 'a\r\nX-B: b' } })).rejects.toThrow(
+        'Cabecera inválida',
+      );
+      await expect(run('http://127.0.0.1/', { method: 'GET /x HTTP/1.1' })).rejects.toThrow('Método HTTP inválido');
+    });
   });
 });
