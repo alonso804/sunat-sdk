@@ -345,8 +345,9 @@ Plan por etapas (el paquete no depende de cómo viva el repositorio):
    sea el del dueño). El nombre sin scope `sunat-sdk` **ya existe en el npm público** (otro autor): no se puede publicar
    ahí y, desde un registro sin scope, un proyecto podría instalar el paquete equivocado. `package.json` ya lleva
    `publishConfig.registry = https://npm.pkg.github.com` y `access: restricted`, así que nunca sube al npm público.
-   - **Publicar (automático, workflow `Release`)**: sube `version` en `package.json`, haz commit en `main` y sube
-     una etiqueta con esa versión: `git tag -s v0.2.0 -m v0.2.0 && git push origin v0.2.0`. El workflow comprueba que
+   - **Publicar (automático, workflow `Release`)**: sube `version` en `package.json` en una rama, fusiónala a `main`
+     por PR y, desde `main` actualizado, sube una etiqueta con esa versión:
+     `git tag -s v0.2.0 -m v0.2.0 && git push origin v0.2.0`. El workflow comprueba que
      la etiqueta coincida con `package.json` y esté en `main`, corre Biome, typecheck, pruebas y build, y publica con
      `npm publish --ignore-scripts` usando el token del propio workflow, que solo existe en ese último paso: no hace
      falta ningún token personal. Si GitHub lo rechaza con
@@ -363,6 +364,11 @@ Plan por etapas (el paquete no depende de cómo viva el repositorio):
      lugar de tus cuentas.
    - **CI**: cada push corre el workflow `CI` (Biome, typecheck, pruebas y build) en una máquina limpia con
      Linux; las pruebas contra SUNAT beta no corren ahí.
+   - **`main` solo por PR**: GitHub Free no permite proteger ramas en repositorios privados, así que hay dos controles
+     en su lugar. El hook `.githooks/pre-push` rechaza en tu máquina el push directo a `main` (actívalo una vez por clon
+     con `git config core.hooksPath .githooks`; `--no-verify` lo salta). El workflow `Main por PR` no lo impide en
+     GitHub, pero falla y te avisa si a `main` llega un commit que no salió de un PR fusionado, o un push forzado.
+     Además, Actions exige que toda acción esté fijada por SHA (opción del repositorio).
 3. **Plan B: monorepo.** Mover esta carpeta a `packages/sunat-sdk` y consumirla con `"@alonso804/sunat-sdk": "workspace:*"`
    (sin registro ni tokens).
 

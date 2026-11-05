@@ -1,0 +1,2 @@
+# Los hooks son scripts de shell: siempre con fin de línea LF, también en clones de Windows (autocrlf).
+.githooks/** text eol=lf

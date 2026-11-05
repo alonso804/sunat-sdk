@@ -1,0 +1,40 @@
+name: Main por PR
+
+# GitHub Free no permite proteger ramas en repositorios privados, así que no se puede impedir un push directo a main.
+# Este workflow no lo impide, pero falla (y GitHub te avisa por correo) si a main llega un commit que no es el
+# resultado de un pull request fusionado, o un push forzado. El control preventivo es el hook .githooks/pre-push.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check:
+    name: main solo cambia por PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Sin acciones de terceros: solo gh, que ya viene en el runner. Los datos del evento van por variables de
+      # entorno, nunca interpolados en el script.
+      - name: El nuevo commit de main viene de un PR fusionado
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AFTER: ${{ github.sha }}
+          BEFORE: ${{ github.event.before }}
+          FORCED: ${{ github.event.forced }}
+        run: |
+          set -euo pipefail
+          if [ "$FORCED" = "true" ]; then
+            echo "::error::Push forzado a main ($BEFORE -> $AFTER). main solo debe cambiar por pull request."
+            exit 1
+          fi
+          prs=$(gh api "repos/$GITHUB_REPOSITORY/commits/$AFTER/pulls" \
+            --jq '[.[] | select(.merged_at != null and .base.ref == "main" and .merge_commit_sha == env.AFTER)] | length')
+          if [ "$prs" -eq 0 ]; then
+            echo "::error::El commit $AFTER llegó a main sin un pull request fusionado. main solo debe cambiar por pull request."
+            exit 1
+          fi
+          echo "OK: $AFTER es el resultado de un pull request fusionado."
