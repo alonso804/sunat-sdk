@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { inspect } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
 import { SunatApiError, SunatClient, SunatTransportError, SunatValidationError } from '../src';
 import { unzipFiles } from '../src/zip';
@@ -387,5 +388,25 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
     await expect(client.sendDespatch(client.prepareDespatch(sampleDespatch()))).rejects.toBeInstanceOf(
       SunatValidationError,
     );
+  });
+});
+
+describe('secretos fuera de lo que se imprime o se serializa', () => {
+  it('ni util.inspect (console.log) ni JSON.stringify del cliente muestran claves, llave privada ni token', async () => {
+    const { client } = makeClient([TOKEN, SENT, accepted()]);
+    await client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling); // deja el token en caché
+    const printed = `${inspect(client, { depth: Number.POSITIVE_INFINITY, showHidden: true })}\n${JSON.stringify(client)}`;
+    expect(printed).toContain(TEST_RUC); // el emisor sí se ve: la prueba mira el objeto real
+    for (const secret of ['clave-sol', 'secret-456', 'TOKEN-1', 'PRIVATE KEY']) expect(printed).not.toContain(secret);
+  });
+
+  it('si SUNAT no devuelve access_token, el error lista los campos recibidos pero no sus valores', async () => {
+    const { client } = makeClient([{ body: { accessToken: 'TOKEN-CON-OTRO-NOMBRE', expires_in: 3600 } }]);
+    const error = await client
+      .sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling)
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SunatApiError);
+    expect((error as SunatApiError).message).toContain('campos recibidos: accessToken, expires_in');
+    expect(inspect(error, { depth: Number.POSITIVE_INFINITY })).not.toContain('TOKEN-CON-OTRO-NOMBRE');
   });
 });

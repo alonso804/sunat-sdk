@@ -108,13 +108,10 @@ export async function requestToken(request_: TokenRequest, now: () => number = D
   );
   const accessToken = json.access_token;
   if (typeof accessToken !== 'string' || !accessToken) {
-    throw new SunatApiError(
-      'SUNAT no devolvió un token de acceso.',
-      200,
-      undefined,
-      [],
-      JSON.stringify(json).slice(0, 500),
-    );
+    // Solo los nombres de los campos, nunca sus valores: si SUNAT cambiara el nombre del campo, el token terminaría en
+    // el error y de ahí en los registros de la app.
+    const fields = Object.keys(json).join(', ') || 'ninguno';
+    throw new SunatApiError(`SUNAT no devolvió un token de acceso (campos recibidos: ${fields}).`, 200);
   }
   const expiresInSeconds = Number(json.expires_in);
   return { accessToken, expiresAt: now() + (Number.isFinite(expiresInSeconds) ? expiresInSeconds : 3600) * 1000 };

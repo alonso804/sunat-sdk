@@ -217,7 +217,13 @@ export type DespatchPdfRetryOptions = Pick<DespatchPdfOptions, 'retry'>;
 export class SunatClient {
   /** Datos del emisor ya validados y normalizados (con los valores por defecto aplicados). */
   readonly issuer: Issuer;
-  private greToken: Token | undefined;
+  /**
+   * La configuración (clave SOL, `clientSecret`, llave privada) y el token van en campos privados de JavaScript (`#`):
+   * a diferencia de `private` de TypeScript, no aparecen en `console.log`, `util.inspect` ni `JSON.stringify`, así que
+   * no se filtran si alguien imprime o serializa el cliente.
+   */
+  readonly #config: SunatClientConfig;
+  #greToken: Token | undefined;
 
   /**
    * Crea el cliente. No contacta a SUNAT: solo valida los datos del emisor.
@@ -226,7 +232,8 @@ export class SunatClient {
    * @throws {SunatValidationError} Si los datos del emisor no son válidos (RUC, ubigeo, etc.); el detalle por campo
    *   está en `issues`.
    */
-  constructor(private readonly config: SunatClientConfig) {
+  constructor(config: SunatClientConfig) {
+    this.#config = config;
     const parsed = IssuerSchema.safeParse(config.issuer);
     if (!parsed.success) throw toValidationError(parsed.error);
     this.issuer = config.textCharset === TextCharset.latin1 ? toLatin1Deep(parsed.data) : parsed.data;
@@ -258,16 +265,16 @@ export class SunatClient {
   prepareInvoice(input: InvoiceInput): PreparedInvoice {
     const parsed = InvoiceSchema.safeParse(input);
     if (!parsed.success) throw toValidationError(parsed.error);
-    const invoice = this.config.textCharset === TextCharset.latin1 ? toLatin1Deep(parsed.data) : parsed.data;
+    const invoice = this.#config.textCharset === TextCharset.latin1 ? toLatin1Deep(parsed.data) : parsed.data;
 
-    const issuedAt = invoice.issuedAt ?? this.config.now?.() ?? new Date();
+    const issuedAt = invoice.issuedAt ?? this.#config.now?.() ?? new Date();
     const calculation = calculateInvoice(invoice);
     const payment = resolvePayment(invoice.payment, calculation.totals.payable, limaDateTime(issuedAt).date);
     const unsignedXml = buildInvoiceXml({ issuer: this.issuer, invoice, calculation, payment, issuedAt });
     const signedXml = signUblXml(
       unsignedXml,
-      this.config.signingKey,
-      this.config.signatureAlgorithm ?? SignatureAlgorithm.sha1,
+      this.#config.signingKey,
+      this.#config.signatureAlgorithm ?? SignatureAlgorithm.sha1,
     );
     const { totals } = calculation;
 
@@ -347,14 +354,14 @@ export class SunatClient {
       applicationResponse = await withRetries(
         () =>
           sendBill({
-            endpoint: ENDPOINTS[this.config.environment].billService,
-            auth: { username: `${this.issuer.ruc}${this.config.sol.user}`, password: this.config.sol.password },
+            endpoint: ENDPOINTS[this.#config.environment].billService,
+            auth: { username: `${this.issuer.ruc}${this.#config.sol.user}`, password: this.#config.sol.password },
             fileName: `${baseName}.zip`,
             zipBase64: Buffer.from(zip).toString('base64'),
             ...this.restOptions(),
           }),
         isSafeToResend,
-        this.config.retry,
+        this.#config.retry,
       );
     } catch (error) {
       if (error instanceof SunatFaultError && error.kind === SunatFaultKind.rejected) {
@@ -411,22 +418,22 @@ export class SunatClient {
     if (issues.length > 0)
       throw new SunatValidationError('Los datos del comprobante a consultar no son válidos.', issues);
 
-    const endpoint = ENDPOINTS[this.config.environment].consultService;
+    const endpoint = ENDPOINTS[this.#config.environment].consultService;
     if (!endpoint) {
       throw new SunatError(
-        `El servicio de consulta de CDR no está disponible en el ambiente "${this.config.environment}": SUNAT solo lo publica para producción.`,
+        `El servicio de consulta de CDR no está disponible en el ambiente "${this.#config.environment}": SUNAT solo lo publica para producción.`,
       );
     }
     const response = await withRetries(
       () =>
         getStatusCdr({
           endpoint,
-          auth: { username: `${this.issuer.ruc}${this.config.sol.user}`, password: this.config.sol.password },
+          auth: { username: `${this.issuer.ruc}${this.#config.sol.user}`, password: this.#config.sol.password },
           query: { ruc: this.issuer.ruc, type, series, number: query.number },
           ...this.restOptions(),
         }),
       isRetryableRead,
-      this.config.retry,
+      this.#config.retry,
     );
     const result: InvoiceStatusResult = { statusCode: response.statusCode, statusMessage: response.statusMessage };
     if (response.contentBase64) {
@@ -477,10 +484,10 @@ export class SunatClient {
     return prepareDespatch({
       issuer: this.issuer,
       input,
-      signingKey: this.config.signingKey,
-      algorithm: this.config.signatureAlgorithm ?? SignatureAlgorithm.sha1,
-      now: this.config.now ?? (() => new Date()),
-      textCharset: this.config.textCharset ?? TextCharset.unicode,
+      signingKey: this.#config.signingKey,
+      algorithm: this.#config.signatureAlgorithm ?? SignatureAlgorithm.sha1,
+      now: this.#config.now ?? (() => new Date()),
+      textCharset: this.#config.textCharset ?? TextCharset.unicode,
     });
   }
 
@@ -529,7 +536,7 @@ export class SunatClient {
             ...this.restOptions(),
           }),
         isSafeToResend,
-        this.config.retry,
+        this.#config.retry,
       ),
     );
     // Desde aquí SUNAT ya tiene la guía: un fallo al consultar el resultado no debe perder el ticket.
@@ -561,7 +568,7 @@ export class SunatClient {
    */
   async getDespatchStatus(ref: DespatchTicketRef, options: DespatchStatusOptions = {}): Promise<DespatchResult> {
     // Consulta única (sin sondeo), pero con reintentos: es una lectura sin efecto.
-    const fetchStatus = () => withRetries(() => this.fetchTicket(ref.ticket), isRetryableRead, this.config.retry);
+    const fetchStatus = () => withRetries(() => this.fetchTicket(ref.ticket), isRetryableRead, this.#config.retry);
     const result = await waitForDespatch(fetchStatus, ref.baseName, ref.ticket, { maxWaitMs: 0 });
     return this.attachPdf(result, options.downloadPdf);
   }
@@ -610,33 +617,33 @@ export class SunatClient {
 
   private restOptions(): { fetch?: typeof fetch; timeoutMs?: number } {
     return {
-      ...(this.config.fetch ? { fetch: this.config.fetch } : {}),
-      ...(this.config.timeoutMs ? { timeoutMs: this.config.timeoutMs } : {}),
+      ...(this.#config.fetch ? { fetch: this.#config.fetch } : {}),
+      ...(this.#config.timeoutMs ? { timeoutMs: this.#config.timeoutMs } : {}),
     };
   }
 
   private requireGre(): GreCredentials {
-    if (!this.config.gre) {
+    if (!this.#config.gre) {
       throw new SunatValidationError(
         'Para emitir guías configura `gre: { clientId, clientSecret }` (SOL → Credenciales de API SUNAT).',
       );
     }
-    return this.config.gre;
+    return this.#config.gre;
   }
 
   /** Usa el token en caché (se renueva 60 s antes de vencer) y reintenta una vez si SUNAT lo rechaza. */
   private async withGreToken<T>(call: (token: string) => Promise<T>): Promise<T> {
-    const now = this.config.now ?? (() => new Date());
-    const fresh = (): boolean => this.greToken !== undefined && this.greToken.expiresAt - 60_000 > now().getTime();
+    const now = this.#config.now ?? (() => new Date());
+    const fresh = (): boolean => this.#greToken !== undefined && this.#greToken.expiresAt - 60_000 > now().getTime();
     const wasCached = fresh();
 
-    if (!fresh()) this.greToken = await this.newGreToken();
+    if (!fresh()) this.#greToken = await this.newGreToken();
     try {
-      return await call((this.greToken as Token).accessToken);
+      return await call((this.#greToken as Token).accessToken);
     } catch (error) {
       if (wasCached && error instanceof SunatApiError && error.isAuthError) {
-        this.greToken = await this.newGreToken();
-        return call(this.greToken.accessToken);
+        this.#greToken = await this.newGreToken();
+        return call(this.#greToken.accessToken);
       }
       throw error;
     }
@@ -651,15 +658,15 @@ export class SunatClient {
           {
             clientId: gre.clientId,
             clientSecret: gre.clientSecret,
-            username: `${this.issuer.ruc}${this.config.sol.user}`,
-            password: this.config.sol.password,
+            username: `${this.issuer.ruc}${this.#config.sol.user}`,
+            password: this.#config.sol.password,
             ...(gre.authEndpoint ? { authEndpoint: gre.authEndpoint } : {}),
             ...this.restOptions(),
           },
-          () => (this.config.now ?? (() => new Date()))().getTime(),
+          () => (this.#config.now ?? (() => new Date()))().getTime(),
         ),
       isRetryableRead,
-      this.config.retry,
+      this.#config.retry,
     );
   }
 }
