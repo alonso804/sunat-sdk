@@ -1,5 +1,6 @@
 import { XMLParser } from 'fast-xml-parser';
 import { SunatFaultError, SunatTransportError } from '../errors';
+import { fetchWithCredentials } from '../sunat-fetch';
 import type { Untyped } from '../untyped';
 import { escapeXml } from '../xml';
 
@@ -97,13 +98,14 @@ export async function sendBill(options: SendBillOptions): Promise<string> {
   const doFetch = options.fetch ?? fetch;
   let response: Response;
   try {
-    response = await doFetch(options.endpoint, {
+    response = await fetchWithCredentials(doFetch, options.endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: 'urn:sendBill' },
       body: buildSendBillEnvelope(options.auth, options.fileName, options.zipBase64),
       signal: AbortSignal.timeout(options.timeoutMs ?? 60_000),
     });
   } catch (cause) {
+    if (cause instanceof SunatTransportError) throw cause; // redirección no permitida: SUNAT no procesó el envío
     throw new SunatTransportError(
       'No se pudo contactar a SUNAT; no se sabe si el comprobante fue recibido. Consulta su estado antes de reenviar.',
       { cause },
@@ -172,13 +174,14 @@ export async function getStatusCdr(options: GetStatusCdrOptions): Promise<Status
   const doFetch = options.fetch ?? fetch;
   let response: Response;
   try {
-    response = await doFetch(options.endpoint, {
+    response = await fetchWithCredentials(doFetch, options.endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: 'urn:getStatusCdr' },
       body: buildGetStatusCdrEnvelope(options.auth, options.query),
       signal: AbortSignal.timeout(options.timeoutMs ?? 60_000),
     });
   } catch (cause) {
+    if (cause instanceof SunatTransportError) throw cause;
     throw new SunatTransportError('No se pudo contactar al servicio de consulta de SUNAT.', { cause });
   }
   return parseGetStatusCdrResponse(response.status, await response.text());

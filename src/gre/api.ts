@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { SunatApiError, SunatTransportError } from '../errors';
+import { fetchWithCredentials } from '../sunat-fetch';
 import type { Untyped } from '../untyped';
 
 /**
@@ -72,8 +73,12 @@ async function request(
   const doFetch = options.fetch ?? fetch;
   let response: Response;
   try {
-    response = await doFetch(url, { ...init, signal: AbortSignal.timeout(options.timeoutMs ?? 60_000) });
+    response = await fetchWithCredentials(doFetch, url, {
+      ...init,
+      signal: AbortSignal.timeout(options.timeoutMs ?? 60_000),
+    });
   } catch (cause) {
+    if (cause instanceof SunatTransportError) throw cause; // redirección no permitida: no se envió nada al destino
     throw new SunatTransportError('No se pudo contactar a SUNAT; no se sabe si la solicitud fue recibida.', { cause });
   }
   const body = await readBody(response);
