@@ -313,6 +313,9 @@ Verificadas contra el manual del programador de SUNAT y contra el ambiente beta:
 Verificadas contra el texto de la resolución y sus anexos 12 y 14 (campos, condiciones y estándar UBL 2.1):
 
 - **No hay ambiente de pruebas para la GRE.** Las pruebas reales son en producción: ver `scripts/gre-prod-check.ts`.
+  Por eso, con `environment` distinto de `production`, `sendDespatch` y `getDespatchStatus` fallan sin contactar a
+  nadie (salvo que indiques `gre.apiEndpoint` y `gre.authEndpoint` de un simulador): un cliente de pruebas nunca
+  emite guías reales.
 - **Antes de iniciar el traslado hay que tener el CDR con estado "aceptada"** (art. 34); el traslado solo se sustenta con él.
 - **La baja existe** (art. 8): el remitente puede dar de baja la GRE **en SOL** mientras el traslado no haya iniciado
   (o si cambia el destinatario durante el traslado). Por eso las pruebas usan una fecha de inicio futura.

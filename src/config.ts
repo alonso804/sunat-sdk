@@ -3,7 +3,10 @@
  * valor y `Environment` la unión de todos.
  */
 export const Environment = {
-  /** Pruebas: valida la estructura del XML (usuario `<RUC>MODDATOS`, clave `MODDATOS`). Sin efecto tributario. */
+  /**
+   * Pruebas de facturas: valida la estructura del XML (usuario `<RUC>MODDATOS`, clave `MODDATOS`). Sin efecto
+   * tributario. SUNAT no tiene ambiente de pruebas para las guías (GRE): fuera de `production` el SDK no las envía.
+   */
   beta: 'beta',
   /** Homologación (a confirmar con SUNAT al iniciar el trámite). */
   homologation: 'homologation',

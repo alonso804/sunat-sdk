@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { inspect } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
-import { SunatApiError, SunatClient, SunatTransportError, SunatValidationError } from '../src';
+import { SunatApiError, SunatClient, SunatError, SunatTransportError, SunatValidationError } from '../src';
 import { unzipFiles } from '../src/zip';
 import { cdrXml, cdrZipBase64, sampleDespatch, TEST_ISSUER, TEST_RUC, testCertificate } from './helpers';
 
@@ -408,5 +408,60 @@ describe('secretos fuera de lo que se imprime o se serializa', () => {
     expect(error).toBeInstanceOf(SunatApiError);
     expect((error as SunatApiError).message).toContain('campos recibidos: accessToken, expires_in');
     expect(inspect(error, { depth: Number.POSITIVE_INFINITY })).not.toContain('TOKEN-CON-OTRO-NOMBRE');
+  });
+});
+
+describe('guías fuera de producción (SUNAT no tiene ambiente de pruebas para la GRE)', () => {
+  function build(
+    environment: 'beta' | 'homologation',
+    endpoints: { apiEndpoint?: string; authEndpoint?: string } = {},
+  ) {
+    const mock = mockFetch([TOKEN, SENT, accepted()]);
+    const client = new SunatClient({
+      environment,
+      issuer: TEST_ISSUER,
+      sol: { user: 'USUARIO1', password: 'clave-sol' },
+      gre: { clientId: 'cid-123', clientSecret: 'secret-456', ...endpoints },
+      signingKey: key,
+      fetch: mock.fn,
+      now: () => new Date('2026-10-31T15:30:00-05:00'),
+      retry: { delayMs: 0 },
+    });
+    return { client, ...mock };
+  }
+
+  it.each(['beta', 'homologation'] as const)(
+    'con environment %s, sendDespatch y getDespatchStatus fallan sin contactar a nadie',
+    async (environment) => {
+      const { client, fn } = build(environment);
+      const sent = await client
+        .sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling)
+        .catch((e: unknown) => e);
+      expect(sent).toBeInstanceOf(SunatError);
+      expect((sent as Error).message).toContain('no tiene ambiente de pruebas');
+      await expect(client.getDespatchStatus({ baseName: BASE, ticket: 'ticket-uuid-1' })).rejects.toThrow(
+        'no tiene ambiente de pruebas',
+      );
+      expect(fn).not.toHaveBeenCalled();
+    },
+  );
+
+  it('con un solo endpoint explícito también falla (la otra llamada iría a producción)', async () => {
+    const { client, fn } = build('beta', { apiEndpoint: 'https://simulador.local/v1' });
+    await expect(client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling)).rejects.toThrow(
+      'no tiene ambiente de pruebas',
+    );
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('con apiEndpoint y authEndpoint explícitos (un simulador) sí envía', async () => {
+    const { client, calls } = build('beta', {
+      apiEndpoint: 'https://simulador.local/v1',
+      authEndpoint: 'https://simulador.local/auth',
+    });
+    const result = await client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling);
+    expect(result.status).toBe('accepted');
+    expect(calls[0]!.url.startsWith('https://simulador.local/auth/')).toBe(true);
+    expect(calls[1]!.url.startsWith('https://simulador.local/v1/')).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 import { amountInWords } from './amount-in-words';
 import type { Currency } from './catalogs';
 import { type Cdr, readCdrFromApplicationResponse } from './cdr';
-import { ENDPOINTS, type Environment } from './config';
+import { ENDPOINTS, Environment } from './config';
 import type { DespatchInput } from './despatch/schema';
 import {
   type DespatchResult,
@@ -39,7 +39,10 @@ import { zipSingleFile } from './zip';
 export type GreCredentials = {
   clientId: string;
   clientSecret: string;
-  /** Solo para pruebas o proxies. */
+  /**
+   * Solo para pruebas o proxies. Fuera de `production` las guías solo se envían si se indican los dos endpoints
+   * (SUNAT no tiene ambiente de pruebas para la GRE).
+   */
   apiEndpoint?: string;
   authEndpoint?: string;
 };
@@ -507,6 +510,8 @@ export class SunatClient {
    * @returns `accepted` / `accepted_with_observations` con el CDR (`cdrZip`: guárdalo, es el sustento del traslado) y
    *   `cdr.qrUrl` para el QR; `rejected` con el código y el mensaje; o `pending` con el `ticket`.
    * @throws {SunatValidationError} Si el cliente no tiene configuradas las credenciales de API (`gre`).
+   * @throws {SunatError} Si `environment` no es `production` y no se indicaron `gre.apiEndpoint` y `gre.authEndpoint`
+   *   (SUNAT no tiene ambiente de pruebas para la GRE: la guía iría a producción). No contacta a nadie.
    * @throws {SunatApiError} Si SUNAT rechaza la petición antes de dar el ticket (credenciales, validación 422…).
    * @throws {SunatTransportError} Si falla la red antes de obtener el ticket.
    *
@@ -558,6 +563,7 @@ export class SunatClient {
    * @param options - `downloadPdf: true` para bajar también el PDF oficial si quedó aceptada.
    * @returns El mismo tipo de resultado que `sendDespatch`; `pending` si SUNAT sigue procesando.
    * @throws {SunatValidationError} Si el cliente no tiene configuradas las credenciales de API (`gre`).
+   * @throws {SunatError} Si `environment` no es `production` y no se indicaron `gre.apiEndpoint` y `gre.authEndpoint`.
    * @throws {SunatApiError} Si SUNAT responde con un error (credenciales, ticket inexistente…).
    * @throws {SunatTransportError} Si la consulta falla por red tras los reintentos (el ticket sigue sirviendo).
    *
@@ -623,12 +629,22 @@ export class SunatClient {
   }
 
   private requireGre(): GreCredentials {
-    if (!this.#config.gre) {
+    const gre = this.#config.gre;
+    if (!gre) {
       throw new SunatValidationError(
         'Para emitir guías configura `gre: { clientId, clientSecret }` (SOL → Credenciales de API SUNAT).',
       );
     }
-    return this.#config.gre;
+    // SUNAT no tiene ambiente de pruebas para la GRE: GRE_ENDPOINTS es producción. Fuera de production se falla
+    // cerrado, como en getInvoiceStatus, para que un cliente de pruebas nunca emita guías reales; solo se permite si
+    // se indican a propósito los dos endpoints (por ejemplo, un simulador o un proxy).
+    const environment = this.#config.environment;
+    if (environment !== Environment.production && !(gre.apiEndpoint && gre.authEndpoint)) {
+      throw new SunatError(
+        `SUNAT no tiene ambiente de pruebas para las guías de remisión: con environment "${environment}" el SDK no las envía, porque irían a producción. Usa environment "production" o indica gre.apiEndpoint y gre.authEndpoint de un simulador.`,
+      );
+    }
+    return gre;
   }
 
   /** Usa el token en caché (se renueva 60 s antes de vencer) y reintenta una vez si SUNAT lo rechaza. */
