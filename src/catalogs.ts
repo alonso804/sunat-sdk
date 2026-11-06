@@ -19,6 +19,18 @@ export const AFFECTATIONS: Record<IgvAffectation, { scheme: TaxScheme; taxed: bo
   '30': { scheme: { id: '9998', name: 'INA', code: 'FRE' }, taxed: false },
 };
 
+/**
+ * Monedas admitidas en la factura (códigos ISO 4217). Es un objeto `as const` y a la vez un tipo con el mismo
+ * nombre: `Currency.PEN` es el valor y `Currency` la unión de todos.
+ */
+export const Currency = {
+  /** Soles (por defecto). */
+  PEN: 'PEN',
+  /** Dólares americanos. */
+  USD: 'USD',
+} as const;
+export type Currency = (typeof Currency)[keyof typeof Currency];
+
 /** Catálogo 01: tipos de comprobante. */
 export const DOCUMENT_TYPE = {
   invoice: '01',
@@ -66,11 +78,23 @@ export type TransferReason = keyof typeof TRANSFER_REASONS;
 /** Motivos en los que el destinatario debe ser el propio remitente (anexo 12, campo 8). */
 export const SELF_RECIPIENT_REASONS: readonly TransferReason[] = ['02', '04', '07'];
 
-/** Catálogo 18: modalidad de traslado. */
+/**
+ * Modalidad de traslado de la guía (`DespatchInput.transportMode`). Es un objeto `as const` y a la vez un tipo con el
+ * mismo nombre. No confundir con `TRANSPORT_MODE`, que traduce cada modalidad a su código del catálogo 18.
+ */
+export const TransportMode = {
+  /** Transporte público: lo hace un transportista (se indican su RUC y nombre). */
+  public: 'public',
+  /** Transporte privado: vehículo y conductor propios (se indican la placa y el conductor con licencia). */
+  private: 'private',
+} as const;
+export type TransportMode = (typeof TransportMode)[keyof typeof TransportMode];
+
+/** Catálogo 18: código de cada modalidad de traslado. */
 export const TRANSPORT_MODE = {
   public: '01',
   private: '02',
-} as const;
+} as const satisfies Record<TransportMode, string>;
 
 /** Catálogo 61: documentos relacionados aplicables a las GRE (subconjunto). */
 export const RELATED_DOCUMENT_TYPES = {

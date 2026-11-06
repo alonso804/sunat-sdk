@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { calculateInvoice } from '../src/invoice/calculate';
 import { InvoiceSchema } from '../src/invoice/schema';
-import { fmt2, fmtUpTo, dec } from '../src/money';
+import { dec, fmt2, fmtUpTo } from '../src/money';
 import { isValidRuc } from '../src/ruc';
 import { sampleInvoice } from './helpers';
 
@@ -90,9 +90,9 @@ describe('InvoiceSchema', () => {
   });
 
   it('rechaza cantidades en cero y RUC de cliente inválido', () => {
-    expect(InvoiceSchema.safeParse(sampleInvoice({ items: [{ description: 'X', quantity: 0, unitPrice: 1 }] })).success).toBe(false);
     expect(
-      InvoiceSchema.safeParse(sampleInvoice({ customer: { ruc: '20000000002', name: 'X' } })).success,
+      InvoiceSchema.safeParse(sampleInvoice({ items: [{ description: 'X', quantity: 0, unitPrice: 1 }] })).success,
     ).toBe(false);
+    expect(InvoiceSchema.safeParse(sampleInvoice({ customer: { ruc: '20000000002', name: 'X' } })).success).toBe(false);
   });
 });

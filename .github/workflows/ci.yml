@@ -1,0 +1,44 @@
+name: CI
+
+# Verifica el proyecto en una máquina limpia: en cada pull request (al abrirlo y con cada push posterior a su rama,
+# probando el resultado de fusionarlo con main), cuando main cambia y a mano desde la pestaña Actions.
+# Las ramas sin PR no lo disparan. No contacta a SUNAT: las pruebas contra beta se saltan sin SUNAT_BETA=1.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# En un PR, un push nuevo cancela la ejecución anterior (ahorra minutos); en main cada ejecución termina.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: Biome, typecheck, tests y build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Acciones fijadas por SHA (la etiqueta de versión se puede mover); el comentario indica la versión.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false # no deja el token en .git/config al alcance de los pasos siguientes
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 11.28.10
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build

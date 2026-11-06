@@ -1,5 +1,7 @@
 import { XMLParser } from 'fast-xml-parser';
 import { SunatFaultError, SunatTransportError } from '../errors';
+import { fetchWithCredentials } from '../sunat-fetch';
+import type { Untyped } from '../untyped';
 import { escapeXml } from '../xml';
 
 const WSSE_NS = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd';
@@ -33,7 +35,7 @@ function soapEnvelope(auth: SoapAuth, bodyXml: string): string {
 export function buildSendBillEnvelope(auth: SoapAuth, fileName: string, zipBase64: string): string {
   return soapEnvelope(
     auth,
-    '<ser:sendBill>' + `<fileName>${escapeXml(fileName)}</fileName>` + `<contentFile>${zipBase64}</contentFile>` + '</ser:sendBill>',
+    `<ser:sendBill><fileName>${escapeXml(fileName)}</fileName><contentFile>${zipBase64}</contentFile></ser:sendBill>`,
   );
 }
 
@@ -54,14 +56,14 @@ function extractFaultCode(faultcode: string, faultstring: string): string {
 }
 
 /** Lee el cuerpo SOAP; si SUNAT respondió con un Fault lanza `SunatFaultError`, y si es ilegible, `SunatTransportError`. */
-function parseSoapBody(httpStatus: number, body: string): Record<string, any> | undefined {
-  let parsed: Record<string, any>;
+function parseSoapBody(httpStatus: number, body: string): Untyped | undefined {
+  let parsed: Untyped;
   try {
-    parsed = parser.parse(body) as Record<string, any>;
+    parsed = parser.parse(body) as Untyped;
   } catch (cause) {
     throw new SunatTransportError(`Respuesta ilegible de SUNAT (HTTP ${httpStatus}).`, { cause, httpStatus });
   }
-  const soapBody = parsed.Envelope?.Body as Record<string, any> | undefined;
+  const soapBody = parsed.Envelope?.Body as Untyped | undefined;
   const fault = soapBody?.Fault;
   if (fault) {
     const faultcode = String(fault.faultcode ?? '');
@@ -96,13 +98,14 @@ export async function sendBill(options: SendBillOptions): Promise<string> {
   const doFetch = options.fetch ?? fetch;
   let response: Response;
   try {
-    response = await doFetch(options.endpoint, {
+    response = await fetchWithCredentials(doFetch, options.endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: 'urn:sendBill' },
       body: buildSendBillEnvelope(options.auth, options.fileName, options.zipBase64),
       signal: AbortSignal.timeout(options.timeoutMs ?? 60_000),
     });
   } catch (cause) {
+    if (cause instanceof SunatTransportError) throw cause; // redirección no permitida: SUNAT no procesó el envío
     throw new SunatTransportError(
       'No se pudo contactar a SUNAT; no se sabe si el comprobante fue recibido. Consulta su estado antes de reenviar.',
       { cause },
@@ -171,13 +174,14 @@ export async function getStatusCdr(options: GetStatusCdrOptions): Promise<Status
   const doFetch = options.fetch ?? fetch;
   let response: Response;
   try {
-    response = await doFetch(options.endpoint, {
+    response = await fetchWithCredentials(doFetch, options.endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: 'urn:getStatusCdr' },
       body: buildGetStatusCdrEnvelope(options.auth, options.query),
       signal: AbortSignal.timeout(options.timeoutMs ?? 60_000),
     });
   } catch (cause) {
+    if (cause instanceof SunatTransportError) throw cause;
     throw new SunatTransportError('No se pudo contactar al servicio de consulta de SUNAT.', { cause });
   }
   return parseGetStatusCdrResponse(response.status, await response.text());

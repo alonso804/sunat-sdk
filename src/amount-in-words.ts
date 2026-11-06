@@ -1,4 +1,5 @@
-import { round, type Dec } from './money';
+import type { Currency } from './catalogs';
+import { type Dec, round } from './money';
 
 const UNITS = [
   '',
@@ -96,13 +97,13 @@ export function integerToWords(n: number): string {
 const CURRENCY_NAMES = {
   PEN: 'SOLES',
   USD: 'DOLARES AMERICANOS',
-} as const;
+} as const satisfies Record<Currency, string>;
 
 /**
  * Leyenda 1000 de SUNAT ("monto en letras"):
  * `SON: CIENTO DIECIOCHO CON 00/100 SOLES`
  */
-export function amountInWords(amount: Dec, currency: keyof typeof CURRENCY_NAMES): string {
+export function amountInWords(amount: Dec, currency: Currency): string {
   const rounded = round(amount, 2);
   const cents = rounded.mul(100).mod(100).toNumber();
   const integer = rounded.floor().toNumber();

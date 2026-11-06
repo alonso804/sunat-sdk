@@ -8,7 +8,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { checkCertificate, describeCertificate, signingKeyFromPfx } from '../src';
-import { signUblXml, verifyUblSignature, type SignatureAlgorithm } from '../src/signing/xmldsig';
+import { type SignatureAlgorithm, signUblXml, verifyUblSignature } from '../src/signing/xmldsig';
 
 const need = (name: string): string => {
   const value = process.env[name];
@@ -42,7 +42,9 @@ console.log('\nCertificado');
 console.log(`  Titular:      ${show(info.subject)}`);
 console.log(`  Emitido por:  ${show(info.issuer)}`);
 console.log(`  Serie:        ${info.serialNumber}`);
-console.log(`  Vigencia:     ${info.notBefore.toISOString().slice(0, 10)} → ${info.notAfter.toISOString().slice(0, 10)}  (${check.daysRemaining} días restantes)`);
+console.log(
+  `  Vigencia:     ${info.notBefore.toISOString().slice(0, 10)} → ${info.notAfter.toISOString().slice(0, 10)}  (${check.daysRemaining} días restantes)`,
+);
 console.log(`  Llave:        RSA ${info.keyBits} bits · firmado con ${info.signatureAlgorithm}`);
 console.log(`  Huella SHA-256: ${info.fingerprintSha256}`);
 
@@ -66,5 +68,9 @@ for (const algorithm of ['sha1', 'sha256'] as SignatureAlgorithm[]) {
 
 if (check.warnings.length) console.log(`\nAvisos:\n${check.warnings.map((w) => `  - ${w}`).join('\n')}`);
 if (check.problems.length) console.log(`\nProblemas:\n${check.problems.map((p) => `  - ${p}`).join('\n')}`);
-console.log(check.ok && signingOk ? '\nEl certificado se puede usar para firmar.' : '\nHay problemas: revisa los mensajes de arriba.');
+console.log(
+  check.ok && signingOk
+    ? '\nEl certificado se puede usar para firmar.'
+    : '\nHay problemas: revisa los mensajes de arriba.',
+);
 process.exit(check.ok && signingOk ? 0 : 1);

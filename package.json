@@ -1,6 +1,6 @@
 {
   "name": "@alonso804/sunat-sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "SDK en TypeScript para integrarse directo con SUNAT (facturas y guías de remisión electrónicas) sin PSE/OSE",
   "license": "UNLICENSED",
   "repository": {
@@ -25,37 +25,54 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
+    },
+    "./ruc": {
+      "import": {
+        "types": "./dist/ruc.d.ts",
+        "default": "./dist/ruc.js"
+      },
+      "require": {
+        "types": "./dist/ruc.d.cts",
+        "default": "./dist/ruc.cjs"
+      }
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "build": "tsup",
-    "prepublishOnly": "tsc --noEmit && vitest run && tsup",
+    "prepublishOnly": "biome check && tsc --noEmit && vitest run && tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
+    "lint": "biome lint",
+    "format": "biome format --write",
+    "check": "biome check",
+    "check:fix": "biome check --write",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:beta": "SUNAT_BETA=1 vitest run test/beta.integration.test.ts"
   },
   "dependencies": {
-    "decimal.js": "^10.6.0",
-    "fast-xml-parser": "^5.11.2",
-    "fflate": "^0.8.3",
-    "node-forge": "^1.4.2",
-    "xml-crypto": "^6.4.0",
-    "zod": "^4.6.7"
+    "decimal.js": "10.6.0",
+    "fast-xml-parser": "5.11.2",
+    "fflate": "0.8.3",
+    "node-forge": "1.4.2",
+    "xml-crypto": "6.4.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "@types/node": "^26.6.6",
-    "@types/node-forge": "^1.3.14",
-    "tsup": "^9.0.0",
-    "tsx": "^4.23.15",
-    "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+    "@biomejs/biome": "2.6.4",
+    "@types/node": "26.6.6",
+    "@types/node-forge": "1.3.14",
+    "tsup": "9.0.0",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "vitest": "5.0.5",
+    "xmllint-wasm": "5.3.0"
   }
 }

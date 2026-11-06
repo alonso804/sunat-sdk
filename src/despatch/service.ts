@@ -1,15 +1,22 @@
-import { readCdrFromApplicationResponse, type Cdr } from '../cdr';
-import { RELATED_DOCUMENT_TYPES, SELF_RECIPIENT_REASONS, TRANSFER_REASONS, type TransferReason } from '../catalogs';
+import {
+  RELATED_DOCUMENT_TYPES,
+  SELF_RECIPIENT_REASONS,
+  TRANSFER_REASONS,
+  type TransferReason,
+  type TransportMode,
+} from '../catalogs';
+import { type Cdr, readCdrFromApplicationResponse } from '../cdr';
 import { SunatApiError, SunatTransportError, SunatValidationError } from '../errors';
+import type { TicketStatus } from '../gre/api';
+import type { DespatchPdf } from '../gre/pdf';
 import type { Issuer } from '../invoice/schema';
 import { dec, fmtFixed, fmtUpTo } from '../money';
 import type { SigningKey } from '../signing/certificate';
-import { extractDigestValue, signUblXml, type SignatureAlgorithm } from '../signing/xmldsig';
+import { extractDigestValue, type SignatureAlgorithm, signUblXml } from '../signing/xmldsig';
+import { TextCharset, toLatin1Deep } from '../text-charset';
 import { toValidationError } from '../validation';
 import { limaDateTime } from '../xml';
-import type { TicketStatus } from '../gre/api';
-import type { DespatchPdf } from '../gre/pdf';
-import { DespatchSchema, type DespatchInput } from './schema';
+import { type DespatchInput, DespatchSchema } from './schema';
 import { buildDespatchXml, despatchBaseName, type ResolvedParty } from './xml';
 
 /** Resumen legible para mostrar al usuario y pedir confirmación antes de emitir. */
@@ -18,19 +25,29 @@ export type DespatchSummary = {
   number: number;
   /** Hora de Lima, `YYYY-MM-DD HH:mm:ss`. */
   issuedAt: string;
+  /** Motivo de traslado (catálogo 20) con su descripción, p. ej. `{ code: '01', label: 'Venta' }`. */
   reason: { code: TransferReason; label: string };
-  transportMode: 'public' | 'private';
+  transportMode: TransportMode;
+  /** `YYYY-MM-DD`: inicio del traslado (privado) o entrega al transportista (público). */
   transferStartDate: string;
+  /** Destinatario ya resuelto: en los motivos 02, 04 y 07 es el propio remitente. */
   recipient: ResolvedParty;
+  /** Punto de partida. */
   origin: { ubigeo: string; address: string };
+  /** Punto de llegada. */
   destination: { ubigeo: string; address: string };
   /** Por ejemplo "12.500 KGM". */
   grossWeight: string;
+  /** Número de bultos, si se indicó. */
   packages: number | undefined;
   items: Array<{ description: string; quantity: string; unit: string }>;
+  /** Transportista (transporte público). */
   carrier: { ruc: string; name: string } | undefined;
+  /** Placa del vehículo: en transporte privado, o en público con el indicador `carrierVehicleAndDrivers`. */
   vehiclePlate: string | undefined;
+  /** Conductores: en transporte privado, o en público con el indicador `carrierVehicleAndDrivers`. */
   drivers: Array<{ name: string; docNumber: string; license: string }>;
+  /** Documentos relacionados (p. ej. la factura que sustenta la venta), con la descripción de su tipo. */
   relatedDocuments: Array<{ type: string; label: string; number: string }>;
 };
 
@@ -38,20 +55,47 @@ export type DespatchSummary = {
 export type PreparedDespatch = {
   /** `<RUC>-09-<SERIE>-<CORRELATIVO>`: nombre de los archivos XML y ZIP. */
   baseName: string;
+  /** XML UBL 2.1 firmado, tal como se enviará. Guárdalo junto al CDR. */
   signedXml: string;
   /** Hash (DigestValue) del documento firmado. (El QR no se arma con él: SUNAT entrega la URL del QR en el CDR, `cdr.qrUrl`.) */
   digestValue: string | undefined;
+  /** Fecha y hora de emisión que lleva el XML. */
   issuedAt: Date;
+  /** Resumen para mostrar al usuario y pedir confirmación antes de `sendDespatch`. */
   summary: DespatchSummary;
   /** Avisos para el usuario antes de confirmar el envío. */
   warnings: string[];
 };
 
+/**
+ * Estados de `DespatchResult`. Es un objeto `as const` y a la vez un tipo con el mismo nombre (como las clases de
+ * error): `DespatchStatus.pending` es el valor y `DespatchStatus` la unión de todos.
+ */
+export const DespatchStatus = {
+  /** Aceptada: ya se puede iniciar el traslado. Guarda el CDR. */
+  accepted: 'accepted',
+  /** Aceptada con observaciones (en `cdr.notes`): también se puede iniciar el traslado. */
+  acceptedWithObservations: 'accepted_with_observations',
+  /** Rechazada: en guías el rechazo no invalida el número; corrige y reenvía. */
+  rejected: 'rejected',
+  /** SUNAT ya la recibió pero aún no se conoce el resultado: consulta con `getDespatchStatus`; no la reenvíes. */
+  pending: 'pending',
+} as const;
+export type DespatchStatus = (typeof DespatchStatus)[keyof typeof DespatchStatus];
+
+/**
+ * Resultado de `sendDespatch` y `getDespatchStatus`, según `status` (ver `DespatchStatus`). Una vez que SUNAT entrega
+ * el ticket ya no se lanzan errores: lo que falle después llega como `pending` con `statusError`.
+ */
 export type DespatchResult =
   | {
-      status: 'accepted' | 'accepted_with_observations';
+      /** Aceptada, con o sin observaciones (las observaciones están en `cdr.notes`). */
+      status: typeof DespatchStatus.accepted | typeof DespatchStatus.acceptedWithObservations;
+      /** `<RUC>-09-<SERIE>-<CORRELATIVO>`. */
       baseName: string;
+      /** Ticket que devolvió SUNAT al recibir la guía. */
       ticket: string;
+      /** CDR ya interpretado; `cdr.qrUrl` es el texto del QR. */
       cdr: Cdr;
       /** CDR tal como lo devolvió SUNAT (ZIP). Es el sustento del traslado: guárdalo. */
       cdrZip: Uint8Array;
@@ -62,11 +106,16 @@ export type DespatchResult =
     }
   | {
       /** SUNAT procesó el envío y lo rechazó. En guías el rechazo no invalida el número. */
-      status: 'rejected';
+      status: typeof DespatchStatus.rejected;
+      /** `<RUC>-09-<SERIE>-<CORRELATIVO>`. */
       baseName: string;
+      /** Ticket que devolvió SUNAT al recibir la guía. */
       ticket: string;
+      /** Código de error de SUNAT. */
       code: string;
+      /** Mensaje de SUNAT que explica el rechazo. */
       message: string;
+      /** CDR del rechazo, si SUNAT lo generó. */
       cdr?: Cdr;
     }
   | {
@@ -75,13 +124,16 @@ export type DespatchResult =
        * espera o falló la consulta (ver `statusError`). Consulta de nuevo con `getDespatchStatus({ baseName, ticket })`;
        * NO la reenvíes con otro número.
        */
-      status: 'pending';
+      status: typeof DespatchStatus.pending;
+      /** `<RUC>-09-<SERIE>-<CORRELATIVO>`. */
       baseName: string;
+      /** Ticket para consultar con `getDespatchStatus`. Guárdalo. */
       ticket: string;
       /** Solo si la consulta del ticket falló (red, error de SUNAT, CDR ilegible). La guía igual quedó recibida. */
       statusError?: Error;
     };
 
+/** Opciones de `sendDespatch`: cuánto esperar el resultado del ticket y si bajar el PDF oficial. */
 export type DespatchSendOptions = {
   /** Pausa entre consultas del ticket. Por defecto 2000 ms. */
   pollIntervalMs?: number;
@@ -94,6 +146,7 @@ export type DespatchSendOptions = {
   downloadPdf?: boolean;
   /** Inyectables para pruebas. */
   sleep?: (ms: number) => Promise<void>;
+  /** Reloj en milisegundos, inyectable para pruebas (por defecto `Date.now`). */
   now?: () => number;
 };
 
@@ -103,11 +156,13 @@ export function prepareDespatch(params: {
   signingKey: SigningKey;
   algorithm: SignatureAlgorithm;
   now: () => Date;
+  /** Ver `SunatClientConfig.textCharset`. Por defecto `unicode`. */
+  textCharset?: TextCharset;
 }): PreparedDespatch {
   const { issuer, input, signingKey, algorithm } = params;
   const parsed = DespatchSchema.safeParse(input);
   if (!parsed.success) throw toValidationError(parsed.error);
-  const d = parsed.data;
+  const d = params.textCharset === TextCharset.latin1 ? toLatin1Deep(parsed.data) : parsed.data;
 
   const issuedAt = d.issuedAt ?? params.now();
   const issued = limaDateTime(issuedAt);
@@ -134,10 +189,14 @@ export function prepareDespatch(params: {
       'El traslado inicia hoy. Una vez iniciado ya no se puede dar de baja la GRE en SOL (art. 8 de la RS 000123-2022/SUNAT).',
     );
   } else {
-    warnings.push('Mientras el traslado no haya iniciado, la GRE se puede dar de baja en SOL (art. 8 de la RS 000123-2022/SUNAT).');
+    warnings.push(
+      'Mientras el traslado no haya iniciado, la GRE se puede dar de baja en SOL (art. 8 de la RS 000123-2022/SUNAT).',
+    );
   }
   if (recipient.docType === '6' && recipient.docNumber !== issuer.ruc) {
-    warnings.push('El destinatario recibirá un aviso en su Buzón SOL y podrá declarar su no conformidad (art. 9 de la RS 000123-2022/SUNAT).');
+    warnings.push(
+      'El destinatario recibirá un aviso en su Buzón SOL y podrá declarar su no conformidad (art. 9 de la RS 000123-2022/SUNAT).',
+    );
   }
 
   const unsignedXml = buildDespatchXml({ issuer, despatch: d, recipient, issuedAt });
@@ -186,7 +245,7 @@ export function prepareDespatch(params: {
 export function mapTicketStatus(baseName: string, ticket: string, status: TicketStatus): DespatchResult {
   switch (status.code) {
     case '98':
-      return { status: 'pending', baseName, ticket };
+      return { status: DespatchStatus.pending, baseName, ticket };
 
     case '0': {
       if (!status.cdrBase64) {
@@ -194,9 +253,22 @@ export function mapTicketStatus(baseName: string, ticket: string, status: Ticket
       }
       const { cdr, cdrZip } = readCdrFromApplicationResponse(status.cdrBase64);
       if (!cdr.accepted) {
-        return { status: 'rejected', baseName, ticket, code: cdr.responseCode, message: cdr.description, cdr };
+        return {
+          status: DespatchStatus.rejected,
+          baseName,
+          ticket,
+          code: cdr.responseCode,
+          message: cdr.description,
+          cdr,
+        };
       }
-      return { status: cdr.notes.length > 0 ? 'accepted_with_observations' : 'accepted', baseName, ticket, cdr, cdrZip };
+      return {
+        status: cdr.notes.length > 0 ? DespatchStatus.acceptedWithObservations : DespatchStatus.accepted,
+        baseName,
+        ticket,
+        cdr,
+        cdrZip,
+      };
     }
 
     case '99': {
@@ -209,7 +281,7 @@ export function mapTicketStatus(baseName: string, ticket: string, status: Ticket
         }
       }
       return {
-        status: 'rejected',
+        status: DespatchStatus.rejected,
         baseName,
         ticket,
         code: status.error?.number || cdr?.responseCode || '99',
@@ -247,7 +319,7 @@ export async function waitForDespatch(
   for (;;) {
     try {
       const result = mapTicketStatus(baseName, ticket, await fetchStatus());
-      if (result.status !== 'pending' || now() >= deadline) return result;
+      if (result.status !== DespatchStatus.pending || now() >= deadline) return result;
     } catch (error) {
       if (!isTransient(error) || now() >= deadline) throw error;
     }

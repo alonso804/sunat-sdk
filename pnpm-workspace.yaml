@@ -6,3 +6,6 @@ allowBuilds:
 # Los scripts se ejecutan con el shell multiplataforma de pnpm: así `VAR=1 comando` (p. ej. `test:beta`) también
 # funciona en Windows, donde el shell por defecto es cmd.
 shellEmulator: true
+
+# `pnpm add` guarda versiones exactas ("zod": "4.6.7"), sin `^`: las dependencias solo cambian cuando se actualizan a propósito.
+saveExact: true

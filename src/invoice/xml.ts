@@ -1,10 +1,10 @@
+import { amountInWords } from '../amount-in-words';
 import { AFFECTATIONS, DOCUMENT_TYPE, IDENTITY_TYPE } from '../catalogs';
-import { D, fmt2, fmtUpTo, type Dec } from '../money';
-import { amountInWords } from '../numero-a-letras';
+import { D, type Dec, fmt2, fmtUpTo } from '../money';
 import { escapeXml as esc, limaDateTime, SIGNATURE_ID, singleLine } from '../xml';
 import type { CalculatedInvoice, CalculatedLine } from './calculate';
 import type { ResolvedPayment } from './payment';
-import type { Invoice, Issuer } from './schema';
+import { type Invoice, type Issuer, PaymentType } from './schema';
 
 const NAMESPACES = [
   'xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"',
@@ -17,7 +17,8 @@ const NAMESPACES = [
 /** Forma de pago (anexo 9-A de la RS 193-2020/SUNAT): contado, o crédito con el monto neto pendiente y una línea por cuota. */
 function paymentTerms(payment: ResolvedPayment, currency: string): string {
   const head = '<cac:PaymentTerms><cbc:ID>FormaPago</cbc:ID>';
-  if (payment.type === 'cash') return `${head}<cbc:PaymentMeansID>Contado</cbc:PaymentMeansID></cac:PaymentTerms>`;
+  if (payment.type === PaymentType.cash)
+    return `${head}<cbc:PaymentMeansID>Contado</cbc:PaymentMeansID></cac:PaymentTerms>`;
   const installments = payment.installments
     .map(
       (i) =>
@@ -30,7 +31,9 @@ function paymentTerms(payment: ResolvedPayment, currency: string): string {
 
 /** Orden de compra y guías relacionadas, en el orden que fija el esquema UBL (antes de cac:Signature). */
 function references(invoice: Invoice): string {
-  const order = invoice.purchaseOrder ? `<cac:OrderReference><cbc:ID>${esc(singleLine(invoice.purchaseOrder))}</cbc:ID></cac:OrderReference>` : '';
+  const order = invoice.purchaseOrder
+    ? `<cac:OrderReference><cbc:ID>${esc(singleLine(invoice.purchaseOrder))}</cbc:ID></cac:OrderReference>`
+    : '';
   const despatches = invoice.relatedDespatches
     .map(
       (d) =>
@@ -51,7 +54,12 @@ function amount(tag: string, value: Dec, currency: string): string {
   return `<cbc:${tag} currencyID="${currency}">${fmt2(value)}</cbc:${tag}>`;
 }
 
-function taxSubtotal(taxable: Dec, tax: Dec, currency: string, scheme: { id: string; name: string; code: string }): string {
+function taxSubtotal(
+  taxable: Dec,
+  tax: Dec,
+  currency: string,
+  scheme: { id: string; name: string; code: string },
+): string {
   return (
     '<cac:TaxSubtotal>' +
     amount('TaxableAmount', taxable, currency) +
@@ -73,7 +81,9 @@ function supplierParty(issuer: Issuer): string {
   return (
     '<cac:AccountingSupplierParty><cac:Party>' +
     `<cac:PartyIdentification><cbc:ID schemeID="${IDENTITY_TYPE.ruc}">${issuer.ruc}</cbc:ID></cac:PartyIdentification>` +
-    (issuer.tradeName ? `<cac:PartyName><cbc:Name>${esc(singleLine(issuer.tradeName))}</cbc:Name></cac:PartyName>` : '') +
+    (issuer.tradeName
+      ? `<cac:PartyName><cbc:Name>${esc(singleLine(issuer.tradeName))}</cbc:Name></cac:PartyName>`
+      : '') +
     '<cac:PartyLegalEntity>' +
     `<cbc:RegistrationName>${esc(singleLine(issuer.legalName))}</cbc:RegistrationName>` +
     '<cac:RegistrationAddress>' +
@@ -134,7 +144,9 @@ function invoiceLine(line: CalculatedLine, currency: string): string {
     '</cac:TaxTotal>' +
     '<cac:Item>' +
     `<cbc:Description>${esc(singleLine(line.description))}</cbc:Description>` +
-    (line.productCode ? `<cac:SellersItemIdentification><cbc:ID>${esc(line.productCode)}</cbc:ID></cac:SellersItemIdentification>` : '') +
+    (line.productCode
+      ? `<cac:SellersItemIdentification><cbc:ID>${esc(line.productCode)}</cbc:ID></cac:SellersItemIdentification>`
+      : '') +
     '</cac:Item>' +
     `<cac:Price><cbc:PriceAmount currencyID="${currency}">${fmtUpTo(line.unitValue, 10)}</cbc:PriceAmount></cac:Price>` +
     '</cac:InvoiceLine>'

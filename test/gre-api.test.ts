@@ -1,14 +1,16 @@
 import { createHash } from 'node:crypto';
+import { inspect } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
-import { SunatApiError, SunatClient, SunatTransportError, SunatValidationError } from '../src';
+import { SunatApiError, SunatClient, SunatError, SunatTransportError, SunatValidationError } from '../src';
 import { unzipFiles } from '../src/zip';
-import { TEST_ISSUER, TEST_RUC, cdrXml, cdrZipBase64, sampleDespatch, testCertificate } from './helpers';
+import { cdrXml, cdrZipBase64, sampleDespatch, TEST_ISSUER, TEST_RUC, testCertificate } from './helpers';
 
 const BASE = `${TEST_RUC}-09-T001-1`;
 const { key } = testCertificate();
 
 type Reply = { status?: number; body: unknown };
-const json = ({ status = 200, body }: Reply) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+const json = ({ status = 200, body }: Reply) =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
 /** Fetch simulado que responde en orden y registra cada llamada. */
 function mockFetch(replies: Reply[]) {
@@ -29,7 +31,10 @@ const accepted = (notes: string[] = []): Reply => ({
   body: {
     codRespuesta: '0',
     indCdrGenerado: '1',
-    arcCdr: cdrZipBase64(BASE, cdrXml({ reference: 'T001-1', code: '0', description: 'La Guia numero T001-1, ha sido aceptada', notes })),
+    arcCdr: cdrZipBase64(
+      BASE,
+      cdrXml({ reference: 'T001-1', code: '0', description: 'La Guia numero T001-1, ha sido aceptada', notes }),
+    ),
   },
 });
 
@@ -77,8 +82,10 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
 
     // 2) envío: nombre sin extensión en la ruta, Bearer y cuerpo con ZIP + SHA-256
     expect(sendCall?.url).toBe(`https://api-cpe.sunat.gob.pe/v1/contribuyente/gem/comprobantes/${BASE}`);
-    expect((sendCall?.init.headers as Record<string, string>).Authorization).toBe('Bearer TOKEN-1');
-    const body = JSON.parse(String(sendCall?.init.body)) as { archivo: { nomArchivo: string; arcGreZip: string; hashZip: string } };
+    expect((sendCall!.init.headers as Record<string, string>).Authorization).toBe('Bearer TOKEN-1');
+    const body = JSON.parse(String(sendCall?.init.body)) as {
+      archivo: { nomArchivo: string; arcGreZip: string; hashZip: string };
+    };
     expect(body.archivo.nomArchivo).toBe(`${BASE}.zip`);
     const zip = new Uint8Array(Buffer.from(body.archivo.arcGreZip, 'base64'));
     expect(body.archivo.hashZip).toBe(createHash('sha256').update(zip).digest('hex'));
@@ -93,7 +100,13 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
 
   it('sigue consultando mientras SUNAT responde 98 (en proceso)', async () => {
     const sleep = vi.fn(async () => {});
-    const { client, calls } = makeClient([TOKEN, SENT, { body: { codRespuesta: '98' } }, { body: { codRespuesta: '98' } }, accepted()]);
+    const { client, calls } = makeClient([
+      TOKEN,
+      SENT,
+      { body: { codRespuesta: '98' } },
+      { body: { codRespuesta: '98' } },
+      accepted(),
+    ]);
     const result = await client.sendDespatch(client.prepareDespatch(sampleDespatch()), { pollIntervalMs: 5, sleep });
     expect(result.status).toBe('accepted');
     expect(sleep).toHaveBeenCalledTimes(2);
@@ -102,7 +115,13 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
 
   it('devuelve pending si se agota la espera y permite consultar después', async () => {
     let clock = 0;
-    const { client } = makeClient([TOKEN, SENT, { body: { codRespuesta: '98' } }, { body: { codRespuesta: '98' } }, accepted()]);
+    const { client } = makeClient([
+      TOKEN,
+      SENT,
+      { body: { codRespuesta: '98' } },
+      { body: { codRespuesta: '98' } },
+      accepted(),
+    ]);
     const pending = await client.sendDespatch(client.prepareDespatch(sampleDespatch()), {
       pollIntervalMs: 1000,
       maxWaitMs: 500, // tras el primer sondeo (t=0) duerme 1000 ms; el segundo (t=1000) ya excede la espera
@@ -144,7 +163,14 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
     /** Reloj simulado: cada pausa avanza el tiempo, para que la espera se agote. */
     function clockOptions(maxWaitMs: number) {
       let clock = 0;
-      return { pollIntervalMs: 1000, maxWaitMs, sleep: async (ms: number) => void (clock += ms), now: () => clock };
+      return {
+        pollIntervalMs: 1000,
+        maxWaitMs,
+        sleep: async (ms: number) => {
+          clock += ms;
+        },
+        now: () => clock,
+      };
     }
 
     it('un corte de red persistente devuelve pending con el ticket (no lanza)', async () => {
@@ -179,12 +205,16 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
       const { client, polls } = pollingClient(() => {
         throw new TypeError('fetch failed');
       });
-      await expect(client.getDespatchStatus({ baseName: BASE, ticket: 'ticket-uuid-1' })).rejects.toBeInstanceOf(SunatTransportError);
+      await expect(client.getDespatchStatus({ baseName: BASE, ticket: 'ticket-uuid-1' })).rejects.toBeInstanceOf(
+        SunatTransportError,
+      );
       expect(polls()).toBe(4); // 1 intento + 3 reintentos
     });
 
     it('getDespatchStatus supera un fallo pasajero', async () => {
-      const { client } = pollingClient((n) => (n === 1 ? json({ status: 502, body: { cod: '502', msg: 'Bad Gateway' } }) : json(accepted())));
+      const { client } = pollingClient((n) =>
+        n === 1 ? json({ status: 502, body: { cod: '502', msg: 'Bad Gateway' } }) : json(accepted()),
+      );
       expect((await client.getDespatchStatus({ baseName: BASE, ticket: 'ticket-uuid-1' })).status).toBe('accepted');
     });
   });
@@ -193,22 +223,38 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
     const { client } = makeClient([TOKEN, SENT, accepted(['4000 - observación de prueba'])]);
     const result = await client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling);
     expect(result.status).toBe('accepted_with_observations');
-    if (result.status === 'accepted_with_observations') expect(result.cdr.notes).toEqual(['4000 - observación de prueba']);
+    if (result.status === 'accepted_with_observations')
+      expect(result.cdr.notes).toEqual(['4000 - observación de prueba']);
   });
 
   it('mapea el código 99 como rechazo con el detalle del error', async () => {
     const { client } = makeClient([
       TOKEN,
       SENT,
-      { body: { codRespuesta: '99', indCdrGenerado: '0', error: { numError: '2755', desError: 'El documento tiene errores' } } },
+      {
+        body: {
+          codRespuesta: '99',
+          indCdrGenerado: '0',
+          error: { numError: '2755', desError: 'El documento tiene errores' },
+        },
+      },
     ]);
     const result = await client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling);
-    expect(result).toMatchObject({ status: 'rejected', code: '2755', message: 'El documento tiene errores', ticket: 'ticket-uuid-1' });
+    expect(result).toMatchObject({
+      status: 'rejected',
+      code: '2755',
+      message: 'El documento tiene errores',
+      ticket: 'ticket-uuid-1',
+    });
   });
 
   it('un CDR con código distinto de 0 es un rechazo', async () => {
     const reply: Reply = {
-      body: { codRespuesta: '0', indCdrGenerado: '1', arcCdr: cdrZipBase64(BASE, cdrXml({ reference: 'T001-1', code: '2324', description: 'Rechazada' })) },
+      body: {
+        codRespuesta: '0',
+        indCdrGenerado: '1',
+        arcCdr: cdrZipBase64(BASE, cdrXml({ reference: 'T001-1', code: '2324', description: 'Rechazada' })),
+      },
     };
     const { client } = makeClient([TOKEN, SENT, reply]);
     const result = await client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling);
@@ -218,7 +264,9 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
   it('reutiliza el token mientras no venza y lo renueva después', async () => {
     let now = new Date('2026-10-31T15:30:00-05:00').getTime();
     const second: Reply = { body: { access_token: 'TOKEN-2', token_type: 'Bearer', expires_in: 3600 } };
-    const { client, calls } = makeClient([TOKEN, SENT, accepted(), SENT, accepted(), second, SENT, accepted()], { now: () => new Date(now) });
+    const { client, calls } = makeClient([TOKEN, SENT, accepted(), SENT, accepted(), second, SENT, accepted()], {
+      now: () => new Date(now),
+    });
 
     await client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling);
     await client.sendDespatch(client.prepareDespatch(sampleDespatch({ number: 2 })), fastPolling);
@@ -228,15 +276,19 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
     await client.sendDespatch(client.prepareDespatch(sampleDespatch({ number: 3 })), fastPolling);
     const tokenCalls = calls.filter((c) => c.url.includes('oauth2/token'));
     expect(tokenCalls.length).toBe(2);
-    expect((calls[calls.length - 2]?.init.headers as Record<string, string>).Authorization).toBe('Bearer TOKEN-2');
+    expect((calls[calls.length - 2]!.init.headers as Record<string, string>).Authorization).toBe('Bearer TOKEN-2');
   });
 
   it('si SUNAT rechaza el token en caché (401), renueva y reintenta una vez', async () => {
     const second: Reply = { body: { access_token: 'TOKEN-2', token_type: 'Bearer', expires_in: 3600 } };
     const { client, calls } = makeClient([
-      TOKEN, SENT, accepted(), // primer envío: deja el token en caché
+      TOKEN,
+      SENT,
+      accepted(), // primer envío: deja el token en caché
       { status: 401, body: { cod: '401', msg: 'Unauthorized' } }, // el token en caché ya no sirve
-      second, SENT, accepted(),
+      second,
+      SENT,
+      accepted(),
     ]);
     await client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling);
     const result = await client.sendDespatch(client.prepareDespatch(sampleDespatch({ number: 2 })), fastPolling);
@@ -247,9 +299,18 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
   it('un error de validación 422 se convierte en SunatApiError con detalle', async () => {
     const { client } = makeClient([
       TOKEN,
-      { status: 422, body: { cod: '422', msg: 'Unprocessable Entity', errors: [{ codError: '1033', desError: 'El comprobante ya fue registrado' }] } },
+      {
+        status: 422,
+        body: {
+          cod: '422',
+          msg: 'Unprocessable Entity',
+          errors: [{ codError: '1033', desError: 'El comprobante ya fue registrado' }],
+        },
+      },
     ]);
-    const error = await client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling).catch((e: unknown) => e);
+    const error = await client
+      .sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling)
+      .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(SunatApiError);
     const api = error as SunatApiError;
     expect(api.status).toBe(422);
@@ -258,8 +319,12 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
   });
 
   it('credenciales de API incorrectas dan un error de autenticación claro', async () => {
-    const { client } = makeClient([{ status: 401, body: { error: 'invalid_client', error_description: 'Credenciales inválidas' } }]);
-    const error = await client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling).catch((e: unknown) => e);
+    const { client } = makeClient([
+      { status: 401, body: { error: 'invalid_client', error_description: 'Credenciales inválidas' } },
+    ]);
+    const error = await client
+      .sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling)
+      .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(SunatApiError);
     expect((error as SunatApiError).isAuthError).toBe(true);
     expect((error as SunatApiError).message).toContain('Credenciales inválidas');
@@ -276,7 +341,9 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
   it('un 503 persistente al enviar lanza SunatApiError reintentable, tras el tope de reintentos', async () => {
     const UNAVAILABLE: Reply = { status: 503, body: { cod: '503', msg: 'Service Unavailable' } };
     const { client, calls } = makeClient([TOKEN, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE, UNAVAILABLE]);
-    const error = await client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling).catch((e: unknown) => e);
+    const error = await client
+      .sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling)
+      .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(SunatApiError);
     expect((error as SunatApiError).status).toBe(503);
     expect((error as SunatApiError).retryable).toBe(true);
@@ -285,7 +352,9 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
 
   it('un 500 al enviar NO se reintenta: SUNAT pudo haber recibido la guía', async () => {
     const { client, calls } = makeClient([TOKEN, { status: 500, body: { cod: '500', msg: 'Internal Server Error' } }]);
-    const error = await client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling).catch((e: unknown) => e);
+    const error = await client
+      .sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling)
+      .catch((e: unknown) => e);
     expect((error as SunatApiError).status).toBe(500);
     expect(calls).toHaveLength(2);
   });
@@ -303,12 +372,96 @@ describe('SunatClient.sendDespatch (API REST simulada)', () => {
       fetch: failing,
       retry: { delayMs: 0 },
     });
-    await expect(client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling)).rejects.toBeInstanceOf(SunatTransportError);
+    await expect(client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling)).rejects.toBeInstanceOf(
+      SunatTransportError,
+    );
     expect(failing).toHaveBeenCalledTimes(4); // el token (sin efecto) se reintenta; nunca se llegó a enviar la guía
   });
 
   it('pide configurar las credenciales de API si faltan', async () => {
-    const client = new SunatClient({ environment: 'production', issuer: TEST_ISSUER, sol: { user: 'U', password: 'x' }, signingKey: key });
-    await expect(client.sendDespatch(client.prepareDespatch(sampleDespatch()))).rejects.toBeInstanceOf(SunatValidationError);
+    const client = new SunatClient({
+      environment: 'production',
+      issuer: TEST_ISSUER,
+      sol: { user: 'U', password: 'x' },
+      signingKey: key,
+    });
+    await expect(client.sendDespatch(client.prepareDespatch(sampleDespatch()))).rejects.toBeInstanceOf(
+      SunatValidationError,
+    );
+  });
+});
+
+describe('secretos fuera de lo que se imprime o se serializa', () => {
+  it('ni util.inspect (console.log) ni JSON.stringify del cliente muestran claves, llave privada ni token', async () => {
+    const { client } = makeClient([TOKEN, SENT, accepted()]);
+    await client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling); // deja el token en caché
+    const printed = `${inspect(client, { depth: Number.POSITIVE_INFINITY, showHidden: true })}\n${JSON.stringify(client)}`;
+    expect(printed).toContain(TEST_RUC); // el emisor sí se ve: la prueba mira el objeto real
+    for (const secret of ['clave-sol', 'secret-456', 'TOKEN-1', 'PRIVATE KEY']) expect(printed).not.toContain(secret);
+  });
+
+  it('si SUNAT no devuelve access_token, el error lista los campos recibidos pero no sus valores', async () => {
+    const { client } = makeClient([{ body: { accessToken: 'TOKEN-CON-OTRO-NOMBRE', expires_in: 3600 } }]);
+    const error = await client
+      .sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling)
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SunatApiError);
+    expect((error as SunatApiError).message).toContain('campos recibidos: accessToken, expires_in');
+    expect(inspect(error, { depth: Number.POSITIVE_INFINITY })).not.toContain('TOKEN-CON-OTRO-NOMBRE');
+  });
+});
+
+describe('guías fuera de producción (SUNAT no tiene ambiente de pruebas para la GRE)', () => {
+  function build(
+    environment: 'beta' | 'homologation',
+    endpoints: { apiEndpoint?: string; authEndpoint?: string } = {},
+  ) {
+    const mock = mockFetch([TOKEN, SENT, accepted()]);
+    const client = new SunatClient({
+      environment,
+      issuer: TEST_ISSUER,
+      sol: { user: 'USUARIO1', password: 'clave-sol' },
+      gre: { clientId: 'cid-123', clientSecret: 'secret-456', ...endpoints },
+      signingKey: key,
+      fetch: mock.fn,
+      now: () => new Date('2026-10-31T15:30:00-05:00'),
+      retry: { delayMs: 0 },
+    });
+    return { client, ...mock };
+  }
+
+  it.each(['beta', 'homologation'] as const)(
+    'con environment %s, sendDespatch y getDespatchStatus fallan sin contactar a nadie',
+    async (environment) => {
+      const { client, fn } = build(environment);
+      const sent = await client
+        .sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling)
+        .catch((e: unknown) => e);
+      expect(sent).toBeInstanceOf(SunatError);
+      expect((sent as Error).message).toContain('no tiene ambiente de pruebas');
+      await expect(client.getDespatchStatus({ baseName: BASE, ticket: 'ticket-uuid-1' })).rejects.toThrow(
+        'no tiene ambiente de pruebas',
+      );
+      expect(fn).not.toHaveBeenCalled();
+    },
+  );
+
+  it('con un solo endpoint explícito también falla (la otra llamada iría a producción)', async () => {
+    const { client, fn } = build('beta', { apiEndpoint: 'https://simulador.local/v1' });
+    await expect(client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling)).rejects.toThrow(
+      'no tiene ambiente de pruebas',
+    );
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('con apiEndpoint y authEndpoint explícitos (un simulador) sí envía', async () => {
+    const { client, calls } = build('beta', {
+      apiEndpoint: 'https://simulador.local/v1',
+      authEndpoint: 'https://simulador.local/auth',
+    });
+    const result = await client.sendDespatch(client.prepareDespatch(sampleDespatch()), fastPolling);
+    expect(result.status).toBe('accepted');
+    expect(calls[0]!.url.startsWith('https://simulador.local/auth/')).toBe(true);
+    expect(calls[1]!.url.startsWith('https://simulador.local/v1/')).toBe(true);
   });
 });

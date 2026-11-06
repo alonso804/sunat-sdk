@@ -2,7 +2,7 @@ import { XMLValidator } from 'fast-xml-parser';
 import { describe, expect, it } from 'vitest';
 import { DespatchSchema, SunatClient, SunatValidationError } from '../src';
 import { verifyUblSignature } from '../src/signing/xmldsig';
-import { TEST_ISSUER, TEST_RUC, sampleDespatch, testCertificate } from './helpers';
+import { sampleDespatch, TEST_ISSUER, TEST_RUC, testCertificate } from './helpers';
 
 const { key } = testCertificate();
 const client = new SunatClient({
@@ -74,7 +74,9 @@ describe('reglas de la GRE remitente (anexo 12, RS 000123-2022/SUNAT)', () => {
     const prepared = client.prepareDespatch(input);
     expect(prepared.signedXml).toContain('SUNAT_Envio_IndicadorTrasladoVehiculoM1L');
     // Como el XML de SOL: un TransportEquipment vacío (sin placa) y ningún conductor.
-    expect(prepared.signedXml).toContain('<cac:TransportHandlingUnit><cac:TransportEquipment/></cac:TransportHandlingUnit>');
+    expect(prepared.signedXml).toContain(
+      '<cac:TransportHandlingUnit><cac:TransportEquipment/></cac:TransportHandlingUnit>',
+    );
     expect(prepared.signedXml).not.toMatch(/<cac:TransportEquipment><cbc:ID>/);
     expect(prepared.signedXml).not.toContain('DriverPerson');
     expect(prepared.summary.vehiclePlate).toBeUndefined();
@@ -82,7 +84,9 @@ describe('reglas de la GRE remitente (anexo 12, RS 000123-2022/SUNAT)', () => {
 
   it('declara el indicador de bien regulado (catálogo 55, 7022) en cada bien: 0 por defecto, 1 si se indica', () => {
     const normal = client.prepareDespatch(sampleDespatch()).signedXml;
-    expect(normal).toContain('<cbc:NameCode listAgencyName="PE:SUNAT" listName="Propiedad del item" listURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo55">7022</cbc:NameCode><cbc:Value>0</cbc:Value>');
+    expect(normal).toContain(
+      '<cbc:NameCode listAgencyName="PE:SUNAT" listName="Propiedad del item" listURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo55">7022</cbc:NameCode><cbc:Value>0</cbc:Value>',
+    );
     const base = sampleDespatch();
     const regulated = client.prepareDespatch({ ...base, items: [{ ...base.items[0]!, regulated: true }] }).signedXml;
     expect(regulated).toContain('>7022</cbc:NameCode><cbc:Value>1</cbc:Value>');
@@ -115,8 +119,12 @@ describe('reglas de la GRE remitente (anexo 12, RS 000123-2022/SUNAT)', () => {
   });
 
   it('valida RUC, DNI, placa, peso y fecha', () => {
-    expect(issues(sampleDespatch({ recipient: { docType: '6', docNumber: '20000000002', name: 'X' } })).join()).toContain('RUC inválido');
-    expect(issues(sampleDespatch({ recipient: { docType: '1', docNumber: '123', name: 'X' } })).join()).toContain('DNI');
+    expect(
+      issues(sampleDespatch({ recipient: { docType: '6', docNumber: '20000000002', name: 'X' } })).join(),
+    ).toContain('RUC inválido');
+    expect(issues(sampleDespatch({ recipient: { docType: '1', docNumber: '123', name: 'X' } })).join()).toContain(
+      'DNI',
+    );
     expect(issues(sampleDespatch({ vehicle: { plate: 'AB' } })).join()).toContain('placa');
     expect(issues(sampleDespatch({ grossWeight: { value: 0, unit: 'KGM' } })).join()).toContain('grossWeight');
     expect(issues(sampleDespatch({ transferStartDate: '2026-02-30' })).join()).toContain('transferStartDate');
@@ -182,7 +190,9 @@ describe('prepareDespatch', () => {
   });
 
   it('la fecha de inicio del traslado no puede ser anterior a la emisión', () => {
-    expect(() => client.prepareDespatch(sampleDespatch({ transferStartDate: '2026-10-30' }))).toThrow(/anterior a la fecha de emisión/);
+    expect(() => client.prepareDespatch(sampleDespatch({ transferStartDate: '2026-10-30' }))).toThrow(
+      /anterior a la fecha de emisión/,
+    );
   });
 
   it('avisa del Buzón SOL del destinatario y de la baja en SOL', () => {

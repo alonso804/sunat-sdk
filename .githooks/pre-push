@@ -1,0 +1,13 @@
+#!/bin/sh
+# Rechaza el push directo a main (y su borrado): los cambios entran a main solo por pull request.
+# GitHub Free no permite proteger ramas en repos privados, así que este hook es el control en tu máquina y el
+# workflow "Main por PR" avisa en GitHub si algo llega a main sin PR. Se activa una vez por clon con:
+#   git config core.hooksPath .githooks
+# Las etiquetas (v0.2.0) y las demás ramas no se ven afectadas. Saltarlo a propósito: git push --no-verify
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    echo "pre-push: no se hace push directo a main; abre un pull request desde otra rama." >&2
+    exit 1
+  fi
+done
+exit 0

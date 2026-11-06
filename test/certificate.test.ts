@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -30,7 +30,11 @@ describe('textos con tildes en el certificado', () => {
     cert.validity.notAfter = new Date(Date.now() + 86_400_000);
     // forge codifica en UTF-8 al armar el certificado cuando el campo es UTF8String.
     const subject = [
-      { name: 'organizationName', value: 'Registro Nacional de Identificación y Estado Civil', valueTagClass: forge.asn1.Type.UTF8 as never },
+      {
+        name: 'organizationName',
+        value: 'Registro Nacional de Identificación y Estado Civil',
+        valueTagClass: forge.asn1.Type.UTF8 as never,
+      },
     ];
     cert.setSubject(subject);
     cert.setIssuer(subject);
@@ -52,8 +56,12 @@ describe('checkCertificate', () => {
   });
 
   it('detecta un certificado vencido o aún no vigente', () => {
-    expect(checkCertificate(info, { now: new Date(info.notAfter.getTime() + 86_400_000) }).problems.join()).toContain('venció');
-    expect(checkCertificate(info, { now: new Date(info.notBefore.getTime() - 86_400_000) }).problems.join()).toContain('aún no es válido');
+    expect(checkCertificate(info, { now: new Date(info.notAfter.getTime() + 86_400_000) }).problems.join()).toContain(
+      'venció',
+    );
+    expect(checkCertificate(info, { now: new Date(info.notBefore.getTime() - 86_400_000) }).problems.join()).toContain(
+      'aún no es válido',
+    );
   });
 
   it('avisa cuando vence pronto', () => {
@@ -89,16 +97,69 @@ describe.skipIf(!hasOpenssl)('PKCS#12 generado con openssl', () => {
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), 'sunat-sdk-pfx-'));
-    run(['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'ca.key', '-out', 'ca.pem', '-subj', '/C=PE/O=CA DE PRUEBA/CN=CA', '-days', '30']);
-    run(['req', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'leaf.key', '-out', 'leaf.csr', '-subj', `/C=PE/O=NEGOCIO DE PRUEBA/OU=${TEST_RUC}/CN=NEGOCIO`]);
-    run(['x509', '-req', '-in', 'leaf.csr', '-CA', 'ca.pem', '-CAkey', 'ca.key', '-CAcreateserial', '-out', 'leaf.pem', '-days', '30', '-sha256']);
+    run([
+      'req',
+      '-x509',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-keyout',
+      'ca.key',
+      '-out',
+      'ca.pem',
+      '-subj',
+      '/C=PE/O=CA DE PRUEBA/CN=CA',
+      '-days',
+      '30',
+    ]);
+    run([
+      'req',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-keyout',
+      'leaf.key',
+      '-out',
+      'leaf.csr',
+      '-subj',
+      `/C=PE/O=NEGOCIO DE PRUEBA/OU=${TEST_RUC}/CN=NEGOCIO`,
+    ]);
+    run([
+      'x509',
+      '-req',
+      '-in',
+      'leaf.csr',
+      '-CA',
+      'ca.pem',
+      '-CAkey',
+      'ca.key',
+      '-CAcreateserial',
+      '-out',
+      'leaf.pem',
+      '-days',
+      '30',
+      '-sha256',
+    ]);
 
     let index = 0;
     for (const [name, extra] of Object.entries(variants)) {
       const outputs: { chain: boolean; file: string }[] = [];
       for (const chain of [false, true]) {
         const file = `v${index++}.p12`;
-        const args = ['pkcs12', '-export', '-out', file, '-inkey', 'leaf.key', '-in', 'leaf.pem', '-passout', 'pass:secreto', ...extra, ...(chain ? ['-certfile', 'ca.pem'] : [])];
+        const args = [
+          'pkcs12',
+          '-export',
+          '-out',
+          file,
+          '-inkey',
+          'leaf.key',
+          '-in',
+          'leaf.pem',
+          '-passout',
+          'pass:secreto',
+          ...extra,
+          ...(chain ? ['-certfile', 'ca.pem'] : []),
+        ];
         if (run(args).status === 0) outputs.push({ chain, file });
       }
       built.set(name, outputs);

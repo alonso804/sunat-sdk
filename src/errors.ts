@@ -1,3 +1,7 @@
+/**
+ * Clase base de todos los errores del SDK: `catch (e) { if (e instanceof SunatError) … }` los distingue de los
+ * errores de tu código. Las subclases dicen qué pasó y si conviene reintentar.
+ */
 export class SunatError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options);
@@ -9,11 +13,26 @@ export class SunatError extends Error {
 export class SunatValidationError extends SunatError {
   constructor(
     message: string,
+    /** Cada problema con la ruta del campo (p. ej. `items.0.quantity`), para mostrarlo junto al campo del formulario. */
     readonly issues: ReadonlyArray<{ path: string; message: string }> = [],
   ) {
     super(message);
   }
 }
+
+/**
+ * Tipos de `SunatFaultError` según su código (ver `SunatFaultError.kind`). Es un objeto `as const` y a la vez un
+ * tipo con el mismo nombre: `SunatFaultKind.exception` es el valor y `SunatFaultKind` la unión de todos.
+ */
+export const SunatFaultKind = {
+  /** 0100–1999: error grave; el comprobante quedó NO informado. Corrige y reenvía con el MISMO número. */
+  exception: 'exception',
+  /** 2000–3999: SUNAT lo procesó y no es válido. En facturas y notas el número queda CONSUMIDO. */
+  rejected: 'rejected',
+  /** Código fuera de esos rangos o que no es un número. */
+  unknown: 'unknown',
+} as const;
+export type SunatFaultKind = (typeof SunatFaultKind)[keyof typeof SunatFaultKind];
 
 /**
  * SUNAT respondió con un SOAP Fault. Según el manual del programador hay dos casos
@@ -25,6 +44,7 @@ export class SunatFaultError extends SunatError {
     readonly code: string,
     /** Texto del fault tal como lo devuelve SUNAT. */
     readonly sunatMessage: string,
+    /** Código HTTP de la respuesta que trajo el fault, si se conoce. */
     readonly httpStatus?: number,
   ) {
     super(`SUNAT ${code}: ${sunatMessage}`);
@@ -36,12 +56,12 @@ export class SunatFaultError extends SunatError {
    * - `rejected` (2000–3999): SUNAT lo procesó pero no es válido. En facturas y notas el
    *   número queda CONSUMIDO: hay que emitir un comprobante nuevo con OTRO número.
    */
-  get kind(): 'exception' | 'rejected' | 'unknown' {
+  get kind(): SunatFaultKind {
     const n = Number(this.code);
-    if (!Number.isFinite(n)) return 'unknown';
-    if (n >= 100 && n <= 1999) return 'exception';
-    if (n >= 2000 && n <= 3999) return 'rejected';
-    return 'unknown';
+    if (!Number.isFinite(n)) return SunatFaultKind.unknown;
+    if (n >= 100 && n <= 1999) return SunatFaultKind.exception;
+    if (n >= 2000 && n <= 3999) return SunatFaultKind.rejected;
+    return SunatFaultKind.unknown;
   }
 }
 
@@ -53,8 +73,14 @@ export class SunatFaultError extends SunatError {
 export class SunatApiError extends SunatError {
   constructor(
     message: string,
+    /** Código HTTP de la respuesta (o el que asigna el SDK, p. ej. 310 si hay demasiadas redirecciones). */
     readonly status: number,
+    /**
+     * Código de error de SUNAT (`cod`, o `error` en el token OAuth), si la respuesta lo trae. La excepción es
+     * `desafio-antibot`, que pone el SDK cuando `consultRuc` recibe el desafío de Cloudflare.
+     */
     readonly code?: string,
+    /** Errores de validación del servicio (`errors: [{ codError, desError }]` con HTTP 422). */
     readonly details: ReadonlyArray<{ code?: string; message: string }> = [],
     /** Cuerpo de la respuesta tal cual (recortado), útil para diagnosticar. */
     readonly rawBody?: string,
@@ -78,14 +104,12 @@ export class SunatApiError extends SunatError {
  * Antes de reenviar con otro número, consulta el estado del comprobante.
  */
 export class SunatTransportError extends SunatError {
-  constructor(
-    message: string,
-    options?: { cause?: unknown; httpStatus?: number },
-  ) {
+  constructor(message: string, options?: { cause?: unknown; httpStatus?: number }) {
     super(message, options?.cause === undefined ? undefined : { cause: options.cause });
     this.httpStatus = options?.httpStatus;
   }
 
+  /** Código HTTP si llegó una respuesta (p. ej. un 401 del proxy o un 5xx sin SOAP); `undefined` si falló la red. */
   readonly httpStatus: number | undefined;
 
   /**

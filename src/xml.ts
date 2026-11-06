@@ -4,7 +4,7 @@ import { SUNAT_TIME_ZONE } from './config';
 export const SIGNATURE_ID = 'SignatureSP';
 
 // Caracteres de control no permitidos en XML 1.0 (se conservan \t, \n y \r).
-// eslint-disable-next-line no-control-regex
+// biome-ignore lint/suspicious/noControlCharactersInRegex: busca justamente esos caracteres para quitarlos del XML.
 const INVALID_XML_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g;
 
 /** Escapa texto o valores de atributos para insertarlos en XML. */

@@ -1,5 +1,6 @@
 import { XMLParser } from 'fast-xml-parser';
 import { SunatError } from './errors';
+import type { Untyped } from './untyped';
 import { unzipFiles } from './zip';
 
 /** Constancia de Recepción (CDR) que SUNAT devuelve al procesar un comprobante. */
@@ -8,9 +9,11 @@ export type Cdr = {
   referenceId: string;
   /** "0" = aceptado. Cualquier otro valor indica rechazo. */
   responseCode: string;
+  /** Mensaje de SUNAT, p. ej. "La Factura numero F001-1, ha sido aceptada". */
   description: string;
   /** Observaciones (códigos 4000+): el comprobante se aceptó pero conviene corregirlas. */
   notes: string[];
+  /** `true` si `responseCode` es "0" (con o sin observaciones). */
   accepted: boolean;
   /**
    * Solo en guías de remisión (GRE): URL que SUNAT entrega en el CDR para el código QR. Es EXACTAMENTE el
@@ -45,7 +48,7 @@ function text(value: unknown): string {
 }
 
 export function parseCdrXml(xml: string): Cdr {
-  const parsed = parser.parse(xml) as Record<string, any>;
+  const parsed = parser.parse(xml) as Untyped;
   const root = parsed.ApplicationResponse;
   const response = root?.DocumentResponse?.Response;
   if (!root || !response) throw new SunatError('El CDR de SUNAT no tiene el formato esperado.');

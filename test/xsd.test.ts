@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { SunatClient } from '../src';
-import { TEST_ISSUER, hasXmllint, sampleDespatch, sampleInvoice, testCertificate, validateAgainstUbl } from './helpers';
+import { sampleDespatch, sampleInvoice, TEST_ISSUER, testCertificate, validateAgainstUbl } from './helpers';
 
 /**
  * Validación contra los esquemas UBL 2.1 oficiales. SUNAT valida el XML con ellos
  * (el error `cvc-particle` que devolvió beta es de ese tipo), así que aquí detectamos
  * localmente los mismos problemas de estructura sin enviar nada.
  */
-describe.skipIf(!hasXmllint)('esquema UBL 2.1 (xmllint)', () => {
+describe('esquema UBL 2.1 (xmllint-wasm)', () => {
   const { key } = testCertificate();
   const client = new SunatClient({
     environment: 'beta',
@@ -16,25 +16,27 @@ describe.skipIf(!hasXmllint)('esquema UBL 2.1 (xmllint)', () => {
     signingKey: key,
   });
 
-  it('el validador detecta un XML defectuoso (control)', () => {
-    const broken = client.prepareInvoice(sampleInvoice()).signedXml.replace(/<cbc:IssueDate>[^<]*<\/cbc:IssueDate>/, '');
-    const result = validateAgainstUbl(broken, 'Invoice');
+  it('el validador detecta un XML defectuoso (control)', async () => {
+    const broken = client
+      .prepareInvoice(sampleInvoice())
+      .signedXml.replace(/<cbc:IssueDate>[^<]*<\/cbc:IssueDate>/, '');
+    const result = await validateAgainstUbl(broken, 'Invoice');
     expect(result.valid).toBe(false);
     expect(result.errors).toContain('IssueDate');
   });
 
-  it('una factura firmada es válida', () => {
-    const result = validateAgainstUbl(client.prepareInvoice(sampleInvoice()).signedXml, 'Invoice');
-    expect(result.errors).toBe('- validates');
+  it('una factura firmada es válida', async () => {
+    const result = await validateAgainstUbl(client.prepareInvoice(sampleInvoice()).signedXml, 'Invoice');
+    expect(result.errors).toBe('');
     expect(result.valid).toBe(true);
   });
 
-  it('una GRE con transporte privado es válida', () => {
-    const result = validateAgainstUbl(client.prepareDespatch(sampleDespatch()).signedXml, 'DespatchAdvice');
-    expect(result.errors).toBe('- validates');
+  it('una GRE con transporte privado es válida', async () => {
+    const result = await validateAgainstUbl(client.prepareDespatch(sampleDespatch()).signedXml, 'DespatchAdvice');
+    expect(result.errors).toBe('');
   });
 
-  it('una GRE con transporte público, motivo 04 y datos completos es válida', () => {
+  it('una GRE con transporte público, motivo 04 y datos completos es válida', async () => {
     const prepared = client.prepareDespatch(
       sampleDespatch({
         reason: '04',
@@ -51,7 +53,14 @@ describe.skipIf(!hasXmllint)('esquema UBL 2.1 (xmllint)', () => {
         destination: { ubigeo: '150114', address: 'TIENDA LA MOLINA', establishmentCode: '0001' },
         note: 'Entrega en horario de oficina',
         items: [
-          { description: 'TUBO PVC 1/2" X 5 M', quantity: '24.5', unit: 'MTR', code: 'TUB05', sunatProductCode: '30181500', gtin: '7750000000017' },
+          {
+            description: 'TUBO PVC 1/2" X 5 M',
+            quantity: '24.5',
+            unit: 'MTR',
+            code: 'TUB05',
+            sunatProductCode: '30181500',
+            gtin: '7750000000017',
+          },
         ],
         relatedDocuments: [
           { type: '01', number: 'F001-123', issuerRuc: '20000000001' },
@@ -59,18 +68,23 @@ describe.skipIf(!hasXmllint)('esquema UBL 2.1 (xmllint)', () => {
         ],
       }),
     );
-    const result = validateAgainstUbl(prepared.signedXml, 'DespatchAdvice');
-    expect(result.errors).toBe('- validates');
+    const result = await validateAgainstUbl(prepared.signedXml, 'DespatchAdvice');
+    expect(result.errors).toBe('');
   });
 
-  it('una GRE de transporte privado M1/L sin placa ni conductor (el caso habitual del negocio) es válida', () => {
+  it('una GRE de transporte privado M1/L sin placa ni conductor (el caso habitual del negocio) es válida', async () => {
     const prepared = client.prepareDespatch(
-      sampleDespatch({ vehicle: undefined, drivers: [], indicators: { m1lVehicle: true }, items: [{ description: 'Chaleco Talla S', quantity: 2 }] }),
+      sampleDespatch({
+        vehicle: undefined,
+        drivers: [],
+        indicators: { m1lVehicle: true },
+        items: [{ description: 'Chaleco Talla S', quantity: 2 }],
+      }),
     );
-    expect(validateAgainstUbl(prepared.signedXml, 'DespatchAdvice').errors).toBe('- validates');
+    expect((await validateAgainstUbl(prepared.signedXml, 'DespatchAdvice')).errors).toBe('');
   });
 
-  it('una GRE con motivo "otros" y comprador es válida', () => {
+  it('una GRE con motivo "otros" y comprador es válida', async () => {
     const prepared = client.prepareDespatch(
       sampleDespatch({
         reason: '13',
@@ -78,6 +92,6 @@ describe.skipIf(!hasXmllint)('esquema UBL 2.1 (xmllint)', () => {
         buyer: { docType: '1', docNumber: '12345678', name: 'MARIA LOPEZ' },
       }),
     );
-    expect(validateAgainstUbl(prepared.signedXml, 'DespatchAdvice').errors).toBe('- validates');
+    expect((await validateAgainstUbl(prepared.signedXml, 'DespatchAdvice')).errors).toBe('');
   });
 });

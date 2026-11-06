@@ -3,15 +3,23 @@ import { SunatError } from '../errors';
 
 /** Par llave privada + certificado, ambos en PEM, listos para firmar. */
 export type SigningKey = {
+  /** Llave privada RSA en PEM. Es un secreto: no la guardes en el código ni en git. */
   privateKeyPem: string;
+  /** Certificado X.509 del titular en PEM; va dentro de cada firma. */
   certificatePem: string;
 };
 
+/** Datos legibles de un certificado (`describeCertificate`), para mostrarlos o revisarlos con `checkCertificate`. */
 export type CertificateInfo = {
+  /** Titular, por nombre corto de atributo (`CN`, `O`, `serialNumber`…). */
   subject: Record<string, string>;
+  /** Entidad de certificación que lo emitió, con las mismas claves que `subject`. */
   issuer: Record<string, string>;
+  /** Número de serie, en hexadecimal. */
   serialNumber: string;
+  /** Inicio de la vigencia. */
   notBefore: Date;
+  /** Fin de la vigencia. */
   notAfter: Date;
   /** Tamaño de la llave RSA en bits (lo habitual es 2048). */
   keyBits: number;
@@ -28,13 +36,32 @@ const OID = {
   certBag: forge.pki.oids.certBag as string,
 };
 
+/**
+ * Arma la llave de firma a partir de la llave privada y el certificado en PEM, si ya los tienes por separado
+ * (p. ej. guardados en un gestor de secretos). Si tienes el archivo `.pfx` / `.p12`, usa `signingKeyFromPfx`.
+ *
+ * @param privateKeyPem - Llave privada RSA en PEM (`-----BEGIN RSA PRIVATE KEY-----` o `-----BEGIN PRIVATE KEY-----`).
+ * @param certificatePem - Certificado digital en PEM (`-----BEGIN CERTIFICATE-----`).
+ * @returns La llave para `SunatClientConfig.signingKey`. No valida el contenido: un PEM incorrecto falla al firmar.
+ */
 export function signingKeyFromPem(privateKeyPem: string, certificatePem: string): SigningKey {
   return { privateKeyPem, certificatePem };
 }
 
 /**
- * Extrae llave privada y certificado de un archivo PKCS#12 (.pfx / .p12),
- * que es el formato en que suele entregarse el certificado digital.
+ * Extrae llave privada y certificado de un archivo PKCS#12 (.pfx / .p12), que es el formato en que SUNAT entrega el
+ * Certificado Digital Tributario. Si el archivo trae toda la cadena, elige el certificado que corresponde a la llave.
+ *
+ * @param pfx - Contenido del archivo (`readFileSync('certificado.pfx')`).
+ * @param passphrase - Contraseña de la llave privada (la que se definió al descargar el certificado).
+ * @returns La llave para `SunatClientConfig.signingKey`.
+ * @throws {SunatError} Si la contraseña es incorrecta, el archivo está dañado o no trae una llave RSA con su
+ *   certificado.
+ *
+ * @example
+ * ```ts
+ * const signingKey = signingKeyFromPfx(readFileSync('certificado.pfx'), process.env.CERT_PASSWORD!);
+ * ```
  */
 export function signingKeyFromPfx(pfx: Uint8Array, passphrase: string): SigningKey {
   let p12: forge.pkcs12.Pkcs12Pfx;
@@ -42,7 +69,9 @@ export function signingKeyFromPfx(pfx: Uint8Array, passphrase: string): SigningK
     const der = forge.util.createBuffer(Buffer.from(pfx).toString('binary'));
     p12 = forge.pkcs12.pkcs12FromAsn1(forge.asn1.fromDer(der), passphrase);
   } catch (cause) {
-    throw new SunatError('No se pudo abrir el archivo PFX: verifica la contraseña y que el archivo no esté dañado.', { cause });
+    throw new SunatError('No se pudo abrir el archivo PFX: verifica la contraseña y que el archivo no esté dañado.', {
+      cause,
+    });
   }
 
   const bagsOf = (oid: string): forge.pkcs12.Bag[] => p12.getBags({ bagType: oid })[oid] ?? [];
@@ -50,7 +79,9 @@ export function signingKeyFromPfx(pfx: Uint8Array, passphrase: string): SigningK
   const keyBags = [...bagsOf(OID.pkcs8ShroudedKeyBag), ...bagsOf(OID.keyBag)];
   const privateKey = keyBags
     .map((bag) => bag.key as unknown)
-    .find((key): key is forge.pki.rsa.PrivateKey => typeof key === 'object' && key !== null && 'n' in key && 'd' in key);
+    .find(
+      (key): key is forge.pki.rsa.PrivateKey => typeof key === 'object' && key !== null && 'n' in key && 'd' in key,
+    );
   if (!privateKey) throw new SunatError('El PFX no contiene una llave privada RSA.');
 
   const certificates = bagsOf(OID.certBag)
@@ -87,7 +118,15 @@ function decodeAttribute(attr: forge.pki.CertificateField): string {
   return isUtf8 ? Buffer.from(value, 'latin1').toString('utf8') : value;
 }
 
-/** Datos legibles del certificado (titular, emisor, vigencia) para diagnóstico. */
+/**
+ * Lee los datos del certificado (titular, emisor, vigencia, tamaño de llave, huella) para mostrarlos o revisarlos.
+ * No contacta a nadie.
+ *
+ * @param certificatePem - Certificado en PEM; por ejemplo, `signingKey.certificatePem`.
+ * @returns Titular y emisor (por atributo, p. ej. `CN`), número de serie, vigencia, bits de la llave, algoritmo y
+ *   huella SHA-256.
+ * @throws {Error} Si el texto no es un certificado PEM válido.
+ */
 export function describeCertificate(certificatePem: string): CertificateInfo {
   const cert = forge.pki.certificateFromPem(certificatePem);
   const der = forge.asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes();
@@ -104,10 +143,13 @@ export function describeCertificate(certificatePem: string): CertificateInfo {
   };
 }
 
+/** Resultado de `checkCertificate`. */
 export type CertificateCheck = {
   /** `false` si hay un problema que impide usar el certificado (vencido o aún no vigente). */
   ok: boolean;
+  /** Lo que impide firmar (vencido o aún no vigente), en texto para mostrar. */
   problems: string[];
+  /** Lo que conviene revisar sin impedir firmar: vence en 60 días o menos, llave chica, RUC que no aparece. */
   warnings: string[];
   /** Días que faltan para el vencimiento (negativo si ya venció). */
   daysRemaining: number;
@@ -116,14 +158,29 @@ export type CertificateCheck = {
 const DAY_MS = 86_400_000;
 const isoDate = (date: Date): string => date.toISOString().slice(0, 10);
 
-/** Revisa vigencia, tamaño de llave y, si se indica el RUC, que aparezca en el titular del certificado. */
+/**
+ * Revisa si el certificado sirve para firmar: vigencia (avisa desde 60 días antes del vencimiento), tamaño de llave
+ * y, si indicas el RUC, que aparezca en el titular.
+ *
+ * @param info - Resultado de `describeCertificate`.
+ * @param options - `ruc` del emisor para comprobar el titular; `now` para evaluar en otra fecha.
+ * @returns `ok: false` con `problems` si está vencido o aún no es válido; `warnings` para lo que conviene revisar;
+ *   y los días que faltan para el vencimiento.
+ *
+ * @example
+ * ```ts
+ * const check = checkCertificate(describeCertificate(signingKey.certificatePem), { ruc: '20000000001' });
+ * if (!check.ok) throw new Error(check.problems.join(' '));
+ * ```
+ */
 export function checkCertificate(info: CertificateInfo, options: { ruc?: string; now?: Date } = {}): CertificateCheck {
   const now = options.now ?? new Date();
   const problems: string[] = [];
   const warnings: string[] = [];
   const daysRemaining = Math.floor((info.notAfter.getTime() - now.getTime()) / DAY_MS);
 
-  if (now < info.notBefore) problems.push(`El certificado aún no es válido (vigente desde ${isoDate(info.notBefore)}).`);
+  if (now < info.notBefore)
+    problems.push(`El certificado aún no es válido (vigente desde ${isoDate(info.notBefore)}).`);
   if (now > info.notAfter) {
     problems.push(`El certificado venció el ${isoDate(info.notAfter)}.`);
   } else if (daysRemaining <= 60) {

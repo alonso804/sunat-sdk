@@ -1,0 +1,70 @@
+name: Release
+
+# Publica el paquete en GitHub Packages (privado) al subir una etiqueta de versión, por ejemplo v0.2.0:
+#   1. Sube "version" en package.json y haz commit en main.
+#   2. git tag -s v0.2.0 -m v0.2.0 && git push origin v0.2.0   (etiqueta firmada: tu git tiene tag.gpgsign)
+# Usa el token del propio workflow (GITHUB_TOKEN con packages: write): no hace falta ningún token personal.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write
+
+# Nunca dos publicaciones a la vez.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publicar en GitHub Packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Acciones fijadas por SHA (la etiqueta de versión se puede mover); el comentario indica la versión.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # historial completo, para comprobar que la etiqueta está en main
+          persist-credentials: false # no deja el token en .git/config al alcance de los pasos siguientes
+
+      - name: La etiqueta coincide con package.json y está en main
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [ "$expected" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::La etiqueta $GITHUB_REF_NAME no coincide con la versión de package.json ($expected)."
+            exit 1
+          fi
+          # Nombre completo de la rama remota: con el corto (origin/main), una etiqueta llamada "origin/main"
+          # tendría prioridad y la comprobación pasaría para un commit que no está en main.
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+            echo "::error::La etiqueta $GITHUB_REF_NAME apunta a un commit que no está en main."
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 11.28.10
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          registry-url: https://npm.pkg.github.com
+          scope: "@alonso804"
+
+      - run: pnpm install --frozen-lockfile
+
+      # Verificaciones y build en pasos sin el token de publicación: el código de las dependencias de desarrollo
+      # (Biome, TypeScript, Vitest, tsup) corre aquí y no puede leerlo. Si algo falla, no se publica.
+      - run: pnpm check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+      # El token solo existe en este paso. --ignore-scripts evita que prepublishOnly vuelva a correr con el token
+      # presente (dist ya se construyó en el paso anterior).
+      - run: npm publish --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
