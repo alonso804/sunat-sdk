@@ -362,8 +362,10 @@ Plan por etapas (el paquete no depende de cómo viva el repositorio):
      `//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}` (PAT _classic_ con `read:packages`; el `.npmrc` sí
      puede ir en git, el token no). No uses el nombre `GITHUB_TOKEN` en tu máquina: si existe, `gh` lo usa en
      lugar de tus cuentas.
-   - **CI**: cada push corre el workflow `CI` (Biome, typecheck, pruebas y build) en una máquina limpia con
-     Linux; las pruebas contra SUNAT beta no corren ahí.
+   - **CI**: el workflow `CI` (Biome, typecheck, pruebas y build, en una máquina limpia con Linux) corre en cada
+     pull request (al abrirlo y con cada push posterior a su rama, sobre el resultado de fusionarlo con `main`), cuando
+     `main` cambia y a mano desde la pestaña Actions; una rama sin PR no lo dispara. Las pruebas contra SUNAT beta no
+     corren ahí. Con el plan gratuito el CI no puede ser obligatorio para fusionar: revisa el ✓ del PR antes.
    - **`main` solo por PR**: GitHub Free no permite proteger ramas en repositorios privados, así que hay dos controles
      en su lugar. El hook `.githooks/pre-push` rechaza en tu máquina el push directo a `main` (actívalo una vez por clon
      con `git config core.hooksPath .githooks`; `--no-verify` lo salta). El workflow `Main por PR` no lo impide en

@@ -1,19 +1,21 @@
 name: CI
 
-# Verifica el proyecto en una máquina limpia en cada push (cualquier rama) y también a mano desde la pestaña Actions.
-# No contacta a SUNAT: las pruebas contra beta se saltan sin SUNAT_BETA=1.
+# Verifica el proyecto en una máquina limpia: en cada pull request (al abrirlo y con cada push posterior a su rama,
+# probando el resultado de fusionarlo con main), cuando main cambia y a mano desde la pestaña Actions.
+# Las ramas sin PR no lo disparan. No contacta a SUNAT: las pruebas contra beta se saltan sin SUNAT_BETA=1.
 on:
+  pull_request:
   push:
-    branches: ["**"]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Si llega otro push a la misma rama, se cancela la ejecución anterior (ahorra minutos).
+# En un PR, un push nuevo cancela la ejecución anterior (ahorra minutos); en main cada ejecución termina.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
