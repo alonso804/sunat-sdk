@@ -37,17 +37,25 @@ import { zipSingleFile } from './zip';
 
 /** Credenciales de la API REST de SUNAT (guías de remisión), generadas en SOL → Credenciales de API SUNAT. */
 export type GreCredentials = {
+  /** `client_id` de la credencial de API. */
   clientId: string;
+  /** `client_secret` de la credencial de API. Es un secreto: no lo guardes en el código ni en git. */
   clientSecret: string;
   /**
    * Solo para pruebas o proxies. Fuera de `production` las guías solo se envían si se indican los dos endpoints
    * (SUNAT no tiene ambiente de pruebas para la GRE).
    */
   apiEndpoint?: string;
+  /** Endpoint del token OAuth. Solo para pruebas o proxies, junto con `apiEndpoint`. */
   authEndpoint?: string;
 };
 
+/** Configuración de `SunatClient`. Un cliente sirve para un emisor y un ambiente. */
 export type SunatClientConfig = {
+  /**
+   * Ambiente de SUNAT (ver `Environment`). Las facturas usan el de aquí; las guías solo se envían en `production`
+   * (SUNAT no tiene ambiente de pruebas para la GRE): en otro ambiente fallan sin contactar a nadie.
+   */
   environment: Environment;
   /** Datos del contribuyente que emite. */
   issuer: IssuerInput;
@@ -64,6 +72,10 @@ export type SunatClientConfig = {
   signatureAlgorithm?: SignatureAlgorithm;
   /** Para pruebas o proxies. Por defecto el `fetch` global. */
   fetch?: typeof fetch;
+  /**
+   * Tiempo máximo de cada petición a SUNAT. Por defecto 60 s en los servicios SOAP y REST; si lo indicas, también se
+   * usa al descargar el PDF de la guía (que por defecto corta a los 10 s).
+   */
   timeoutMs?: number;
   /**
    * Reintentos automáticos (por defecto 3, con pausas de 1 s, 2 s y 4 s; `{ maxRetries: 0 }` los desactiva).
@@ -88,12 +100,18 @@ export type InvoiceSummary = {
   number: number;
   currency: Currency;
   customer: { ruc: string; name: string };
+  /** Líneas como texto: cantidad, precio unitario con IGV (hasta 10 decimales), valor de la línea sin IGV e IGV. */
   lines: Array<{ description: string; quantity: string; unitPrice: string; lineValue: string; igv: string }>;
+  /** Base de las operaciones gravadas, con 2 decimales (como todos los montos del resumen). */
   taxedBase: string;
+  /** Base de las operaciones exoneradas. */
   exoneratedBase: string;
+  /** Base de las operaciones inafectas. */
   unaffectedBase: string;
   igv: string;
+  /** Importe total de la factura. */
   total: string;
+  /** Total en letras para la representación impresa, p. ej. "SON: CIENTO DIECIOCHO CON 00/100 SOLES". */
   totalInWords: string;
   /** Forma de pago ya resuelta: en crédito, el monto neto pendiente (por defecto el total) y las cuotas con su monto. */
   payment:
@@ -103,7 +121,9 @@ export type InvoiceSummary = {
         netPending: string;
         installments: Array<{ number: number; dueDate: string; amount: string }>;
       };
+  /** Orden de compra, si se indicó. */
   purchaseOrder?: string;
+  /** Guías relacionadas (`09` remitente, `31` transportista) como `SERIE-NÚMERO`. */
   relatedDespatches: Array<{ type: '09' | '31'; number: string }>;
 };
 
@@ -111,10 +131,13 @@ export type InvoiceSummary = {
 export type PreparedInvoice = {
   /** `<RUC>-01-<SERIE>-<CORRELATIVO>`: nombre de los archivos XML y ZIP. */
   baseName: string;
+  /** XML UBL 2.1 firmado, tal como se enviará. Guárdalo junto al CDR: es el comprobante. */
   signedXml: string;
   /** Hash (DigestValue) del documento, necesario para el código QR de la representación impresa. */
   digestValue: string | undefined;
+  /** Fecha y hora de emisión que lleva el XML. */
   issuedAt: Date;
+  /** Resumen para mostrar al usuario y pedir confirmación antes de `sendInvoice`. */
   summary: InvoiceSummary;
 };
 
@@ -128,6 +151,7 @@ export type InvoiceStatusQuery = {
   type?: '01' | '07' | '08';
 };
 
+/** Resultado de `getInvoiceStatus`: lo que SUNAT informa del comprobante, sin interpretarlo. */
 export type InvoiceStatusResult = {
   /** Código que devuelve SUNAT (p. ej. "0001"). El manual no publica la tabla completa para `getStatusCdr`: se devuelve tal cual. */
   statusCode: string;
@@ -153,10 +177,17 @@ export const SendInvoiceStatus = {
 } as const;
 export type SendInvoiceStatus = (typeof SendInvoiceStatus)[keyof typeof SendInvoiceStatus];
 
+/**
+ * Resultado de `sendInvoice`, según `status` (ver `SendInvoiceStatus`). Las excepciones de SUNAT (0100–1999) y los
+ * fallos de red no llegan aquí: se lanzan como `SunatFaultError` y `SunatTransportError`.
+ */
 export type SendInvoiceResult =
   | {
+      /** Aceptada, con o sin observaciones (las observaciones están en `cdr.notes`). */
       status: typeof SendInvoiceStatus.accepted | typeof SendInvoiceStatus.acceptedWithObservations;
+      /** `<RUC>-01-<SERIE>-<CORRELATIVO>`. */
       baseName: string;
+      /** CDR ya interpretado. */
       cdr: Cdr;
       /** CDR tal como lo devolvió SUNAT (ZIP); conviene guardarlo como constancia. */
       cdrZip: Uint8Array;
@@ -168,8 +199,11 @@ export type SendInvoiceResult =
        * emite un comprobante nuevo con el siguiente número.
        */
       status: typeof SendInvoiceStatus.rejected;
+      /** `<RUC>-01-<SERIE>-<CORRELATIVO>`. */
       baseName: string;
+      /** Código de rechazo de SUNAT, p. ej. "3291". */
       code: string;
+      /** Mensaje de SUNAT que explica el rechazo. */
       message: string;
     };
 

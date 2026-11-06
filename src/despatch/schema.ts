@@ -262,6 +262,8 @@ export const DespatchSchema: z.ZodObject<typeof despatchShape> = z.object(despat
   }
 });
 
+/** Guía tal como la pasas a `prepareDespatch` (campos opcionales y valores por defecto sin aplicar). */
 export type DespatchInput = z.input<typeof DespatchSchema>;
+/** Guía ya validada, con los valores por defecto aplicados. */
 export type Despatch = z.output<typeof DespatchSchema>;
 export type DespatchItem = z.output<typeof DespatchItemSchema>;

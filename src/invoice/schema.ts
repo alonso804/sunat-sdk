@@ -187,10 +187,17 @@ const invoiceShape = {
  */
 export const InvoiceSchema: z.ZodObject<typeof invoiceShape> = z.object(invoiceShape);
 
+/** Datos del emisor tal como los escribes en `SunatClientConfig.issuer`. */
 export type IssuerInput = z.input<typeof IssuerSchema>;
+/** Datos del emisor ya validados y con los valores por defecto aplicados. */
 export type Issuer = z.output<typeof IssuerSchema>;
+/** Factura tal como la pasas a `prepareInvoice` (campos opcionales y valores por defecto sin aplicar). */
 export type InvoiceInput = z.input<typeof InvoiceSchema>;
+/** Factura ya validada, con los valores por defecto aplicados. */
 export type Invoice = z.output<typeof InvoiceSchema>;
+/** Línea de una factura ya validada. */
 export type InvoiceItem = z.output<typeof InvoiceItemSchema>;
+/** Forma de pago de una factura ya validada (contado o crédito con cuotas). */
 export type InvoicePayment = z.output<typeof InvoicePaymentSchema>;
+/** Guía de remisión relacionada con una factura, ya validada. */
 export type RelatedDespatch = z.output<typeof RelatedDespatchSchema>;

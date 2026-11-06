@@ -4,6 +4,7 @@ import { isValidRuc } from '../ruc';
 import { curlFetch, isCurlAvailable } from './curl';
 import { parseRucPage, type RucConsultResult, RucPageError } from './parse';
 
+/** Opciones de `consultRuc`. */
 export type RucConsultOptions = {
   /** Para pruebas o proxies. Por defecto el `fetch` global. */
   fetch?: typeof fetch;

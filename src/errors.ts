@@ -1,3 +1,7 @@
+/**
+ * Clase base de todos los errores del SDK: `catch (e) { if (e instanceof SunatError) … }` los distingue de los
+ * errores de tu código. Las subclases dicen qué pasó y si conviene reintentar.
+ */
 export class SunatError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options);
@@ -9,6 +13,7 @@ export class SunatError extends Error {
 export class SunatValidationError extends SunatError {
   constructor(
     message: string,
+    /** Cada problema con la ruta del campo (p. ej. `items.0.quantity`), para mostrarlo junto al campo del formulario. */
     readonly issues: ReadonlyArray<{ path: string; message: string }> = [],
   ) {
     super(message);
@@ -39,6 +44,7 @@ export class SunatFaultError extends SunatError {
     readonly code: string,
     /** Texto del fault tal como lo devuelve SUNAT. */
     readonly sunatMessage: string,
+    /** Código HTTP de la respuesta que trajo el fault, si se conoce. */
     readonly httpStatus?: number,
   ) {
     super(`SUNAT ${code}: ${sunatMessage}`);
@@ -67,8 +73,14 @@ export class SunatFaultError extends SunatError {
 export class SunatApiError extends SunatError {
   constructor(
     message: string,
+    /** Código HTTP de la respuesta (o el que asigna el SDK, p. ej. 310 si hay demasiadas redirecciones). */
     readonly status: number,
+    /**
+     * Código de error de SUNAT (`cod`, o `error` en el token OAuth), si la respuesta lo trae. La excepción es
+     * `desafio-antibot`, que pone el SDK cuando `consultRuc` recibe el desafío de Cloudflare.
+     */
     readonly code?: string,
+    /** Errores de validación del servicio (`errors: [{ codError, desError }]` con HTTP 422). */
     readonly details: ReadonlyArray<{ code?: string; message: string }> = [],
     /** Cuerpo de la respuesta tal cual (recortado), útil para diagnosticar. */
     readonly rawBody?: string,
@@ -97,6 +109,7 @@ export class SunatTransportError extends SunatError {
     this.httpStatus = options?.httpStatus;
   }
 
+  /** Código HTTP si llegó una respuesta (p. ej. un 401 del proxy o un 5xx sin SOAP); `undefined` si falló la red. */
   readonly httpStatus: number | undefined;
 
   /**

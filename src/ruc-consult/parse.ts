@@ -20,6 +20,7 @@ export type RucConsultStatus = (typeof RucConsultStatus)[keyof typeof RucConsult
  */
 export type RucConsultResult =
   | {
+      /** SUNAT informó los datos del contribuyente. */
       status: typeof RucConsultStatus.found;
       /** El RUC consultado (se comprueba que SUNAT responda por él, no por otro). */
       ruc: string;
@@ -37,6 +38,7 @@ export type RucConsultResult =
       mainActivity?: RucMainActivity;
     }
   | {
+      /** Sin datos: RUC inexistente o SUNAT saturada; reintenta más tarde antes de darlo por inexistente. */
       status: typeof RucConsultStatus.notFound;
       /** El RUC consultado. */
       ruc: string;
@@ -44,14 +46,16 @@ export type RucConsultResult =
 
 /** Actividad económica principal de la Consulta RUC. */
 export type RucMainActivity = {
+  /** Código CIIU Rev. 4 (p. ej. "4921"), si SUNAT lo separa en la página. */
   code: string | undefined;
+  /** Descripción de la actividad, tal como la muestra SUNAT. */
   description: string;
 };
 
 /**
  * SUNAT entregó una página que no es un resultado de la Consulta RUC que se pueda interpretar, o respondió por otro
  * RUC. Es un error del SDK al leer la página, no un código de SUNAT: por eso es una clase aparte y no un
- * `SunatApiError` (cuyo `code` es siempre el que devuelve SUNAT).
+ * `SunatApiError` (cuyo `code` es el que devuelve SUNAT, salvo `desafio-antibot`).
  */
 export class RucPageError extends SunatError {
   constructor(

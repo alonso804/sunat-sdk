@@ -3,6 +3,7 @@ import { spawn, spawnSync } from 'node:child_process';
 /** Ejecutable curl por plataforma: Windows lo incluye (`curl.exe`, TLS Schannel); macOS/Linux ya traen `curl`. */
 const DEFAULT_EXECUTABLE = process.platform === 'win32' ? 'curl.exe' : 'curl';
 
+/** Opciones de `curlFetch`. */
 export type CurlFetchOptions = {
   /** Ruta de curl. Por defecto el del sistema (`curl.exe` en Windows, `curl` en macOS/Linux). */
   executable?: string;
@@ -28,8 +29,8 @@ export function isCurlAvailable(): boolean {
  * (`cf-mitigated: challenge`, HTTP 403) según la huella TLS+HTTP del cliente: el `urllib` de Python y el `curl`
  * de Windows pasan; el TLS de Node (fetch, https, http2) recibe el desafío. `curlFetch` consulta con curl para
  * aprovechar esa huella: en Windows (Schannel, `curl.exe` incluido con el sistema) es la vía probada; en macOS y
- * Linux curl lleva OpenSSL y puede que siga el desafío — ahí la alternativa son las cookies de una sesión de
- * navegador (ver `RucConsultOptions.headers`).
+ * Linux curl lleva OpenSSL y no está verificado si pasa (las cookies de un navegador no sirven de alternativa: el
+ * desafío va atado a la huella del cliente, ver `RucConsultOptions.headers`).
  *
  * `consultRuc` ya lo usa como fallback automático ante el desafío (opción `curlFallback`); úsalo a mano solo si
  * quieres forzar el transporte curl desde la primera consulta. Lanza un proceso curl por consulta (con

@@ -9,9 +9,11 @@ export type Cdr = {
   referenceId: string;
   /** "0" = aceptado. Cualquier otro valor indica rechazo. */
   responseCode: string;
+  /** Mensaje de SUNAT, p. ej. "La Factura numero F001-1, ha sido aceptada". */
   description: string;
   /** Observaciones (códigos 4000+): el comprobante se aceptó pero conviene corregirlas. */
   notes: string[];
+  /** `true` si `responseCode` es "0" (con o sin observaciones). */
   accepted: boolean;
   /**
    * Solo en guías de remisión (GRE): URL que SUNAT entrega en el CDR para el código QR. Es EXACTAMENTE el

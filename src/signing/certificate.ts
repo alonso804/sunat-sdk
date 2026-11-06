@@ -3,15 +3,23 @@ import { SunatError } from '../errors';
 
 /** Par llave privada + certificado, ambos en PEM, listos para firmar. */
 export type SigningKey = {
+  /** Llave privada RSA en PEM. Es un secreto: no la guardes en el código ni en git. */
   privateKeyPem: string;
+  /** Certificado X.509 del titular en PEM; va dentro de cada firma. */
   certificatePem: string;
 };
 
+/** Datos legibles de un certificado (`describeCertificate`), para mostrarlos o revisarlos con `checkCertificate`. */
 export type CertificateInfo = {
+  /** Titular, por nombre corto de atributo (`CN`, `O`, `serialNumber`…). */
   subject: Record<string, string>;
+  /** Entidad de certificación que lo emitió, con las mismas claves que `subject`. */
   issuer: Record<string, string>;
+  /** Número de serie, en hexadecimal. */
   serialNumber: string;
+  /** Inicio de la vigencia. */
   notBefore: Date;
+  /** Fin de la vigencia. */
   notAfter: Date;
   /** Tamaño de la llave RSA en bits (lo habitual es 2048). */
   keyBits: number;
@@ -135,10 +143,13 @@ export function describeCertificate(certificatePem: string): CertificateInfo {
   };
 }
 
+/** Resultado de `checkCertificate`. */
 export type CertificateCheck = {
   /** `false` si hay un problema que impide usar el certificado (vencido o aún no vigente). */
   ok: boolean;
+  /** Lo que impide firmar (vencido o aún no vigente), en texto para mostrar. */
   problems: string[];
+  /** Lo que conviene revisar sin impedir firmar: vence en 60 días o menos, llave chica, RUC que no aparece. */
   warnings: string[];
   /** Días que faltan para el vencimiento (negativo si ya venció). */
   daysRemaining: number;

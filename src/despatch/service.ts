@@ -25,19 +25,29 @@ export type DespatchSummary = {
   number: number;
   /** Hora de Lima, `YYYY-MM-DD HH:mm:ss`. */
   issuedAt: string;
+  /** Motivo de traslado (catálogo 20) con su descripción, p. ej. `{ code: '01', label: 'Venta' }`. */
   reason: { code: TransferReason; label: string };
   transportMode: TransportMode;
+  /** `YYYY-MM-DD`: inicio del traslado (privado) o entrega al transportista (público). */
   transferStartDate: string;
+  /** Destinatario ya resuelto: en los motivos 02, 04 y 07 es el propio remitente. */
   recipient: ResolvedParty;
+  /** Punto de partida. */
   origin: { ubigeo: string; address: string };
+  /** Punto de llegada. */
   destination: { ubigeo: string; address: string };
   /** Por ejemplo "12.500 KGM". */
   grossWeight: string;
+  /** Número de bultos, si se indicó. */
   packages: number | undefined;
   items: Array<{ description: string; quantity: string; unit: string }>;
+  /** Transportista (transporte público). */
   carrier: { ruc: string; name: string } | undefined;
+  /** Placa del vehículo: en transporte privado, o en público con el indicador `carrierVehicleAndDrivers`. */
   vehiclePlate: string | undefined;
+  /** Conductores: en transporte privado, o en público con el indicador `carrierVehicleAndDrivers`. */
   drivers: Array<{ name: string; docNumber: string; license: string }>;
+  /** Documentos relacionados (p. ej. la factura que sustenta la venta), con la descripción de su tipo. */
   relatedDocuments: Array<{ type: string; label: string; number: string }>;
 };
 
@@ -45,10 +55,13 @@ export type DespatchSummary = {
 export type PreparedDespatch = {
   /** `<RUC>-09-<SERIE>-<CORRELATIVO>`: nombre de los archivos XML y ZIP. */
   baseName: string;
+  /** XML UBL 2.1 firmado, tal como se enviará. Guárdalo junto al CDR. */
   signedXml: string;
   /** Hash (DigestValue) del documento firmado. (El QR no se arma con él: SUNAT entrega la URL del QR en el CDR, `cdr.qrUrl`.) */
   digestValue: string | undefined;
+  /** Fecha y hora de emisión que lleva el XML. */
   issuedAt: Date;
+  /** Resumen para mostrar al usuario y pedir confirmación antes de `sendDespatch`. */
   summary: DespatchSummary;
   /** Avisos para el usuario antes de confirmar el envío. */
   warnings: string[];
@@ -70,11 +83,19 @@ export const DespatchStatus = {
 } as const;
 export type DespatchStatus = (typeof DespatchStatus)[keyof typeof DespatchStatus];
 
+/**
+ * Resultado de `sendDespatch` y `getDespatchStatus`, según `status` (ver `DespatchStatus`). Una vez que SUNAT entrega
+ * el ticket ya no se lanzan errores: lo que falle después llega como `pending` con `statusError`.
+ */
 export type DespatchResult =
   | {
+      /** Aceptada, con o sin observaciones (las observaciones están en `cdr.notes`). */
       status: typeof DespatchStatus.accepted | typeof DespatchStatus.acceptedWithObservations;
+      /** `<RUC>-09-<SERIE>-<CORRELATIVO>`. */
       baseName: string;
+      /** Ticket que devolvió SUNAT al recibir la guía. */
       ticket: string;
+      /** CDR ya interpretado; `cdr.qrUrl` es el texto del QR. */
       cdr: Cdr;
       /** CDR tal como lo devolvió SUNAT (ZIP). Es el sustento del traslado: guárdalo. */
       cdrZip: Uint8Array;
@@ -86,10 +107,15 @@ export type DespatchResult =
   | {
       /** SUNAT procesó el envío y lo rechazó. En guías el rechazo no invalida el número. */
       status: typeof DespatchStatus.rejected;
+      /** `<RUC>-09-<SERIE>-<CORRELATIVO>`. */
       baseName: string;
+      /** Ticket que devolvió SUNAT al recibir la guía. */
       ticket: string;
+      /** Código de error de SUNAT. */
       code: string;
+      /** Mensaje de SUNAT que explica el rechazo. */
       message: string;
+      /** CDR del rechazo, si SUNAT lo generó. */
       cdr?: Cdr;
     }
   | {
@@ -99,12 +125,15 @@ export type DespatchResult =
        * NO la reenvíes con otro número.
        */
       status: typeof DespatchStatus.pending;
+      /** `<RUC>-09-<SERIE>-<CORRELATIVO>`. */
       baseName: string;
+      /** Ticket para consultar con `getDespatchStatus`. Guárdalo. */
       ticket: string;
       /** Solo si la consulta del ticket falló (red, error de SUNAT, CDR ilegible). La guía igual quedó recibida. */
       statusError?: Error;
     };
 
+/** Opciones de `sendDespatch`: cuánto esperar el resultado del ticket y si bajar el PDF oficial. */
 export type DespatchSendOptions = {
   /** Pausa entre consultas del ticket. Por defecto 2000 ms. */
   pollIntervalMs?: number;
@@ -117,6 +146,7 @@ export type DespatchSendOptions = {
   downloadPdf?: boolean;
   /** Inyectables para pruebas. */
   sleep?: (ms: number) => Promise<void>;
+  /** Reloj en milisegundos, inyectable para pruebas (por defecto `Date.now`). */
   now?: () => number;
 };
 

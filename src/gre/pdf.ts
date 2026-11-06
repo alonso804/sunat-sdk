@@ -2,7 +2,9 @@ import { isSunatHttpsUrl } from '../cdr';
 import { SunatApiError, SunatError, SunatTransportError, SunatValidationError } from '../errors';
 import type { RetryOptions } from '../retry';
 
+/** Opciones de la función `downloadDespatchPdf` (el método de `SunatClient` toma `fetch` y `timeoutMs` del cliente). */
 export type DespatchPdfOptions = {
+  /** Para pruebas o proxies. Por defecto el `fetch` global. */
   fetch?: typeof fetch;
   /**
    * Tiempo máximo por intento. Por defecto 10 s. Este servicio de SUNAT responde en menos de 1 s o se queda
@@ -17,6 +19,7 @@ export type DespatchPdfOptions = {
   retry?: RetryOptions;
 };
 
+/** PDF oficial de una guía, tal como lo entrega SUNAT. */
 export type DespatchPdf = {
   /** Contenido del PDF oficial que genera SUNAT. */
   pdf: Uint8Array;
