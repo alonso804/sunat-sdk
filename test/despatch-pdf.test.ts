@@ -71,13 +71,22 @@ describe('downloadDespatchPdf', () => {
     expect(result.fileName).toBeUndefined();
   });
 
-  it('rechaza URLs que no sean https de sunat.gob.pe, sin hacer ninguna petición', async () => {
+  it('rechaza URLs que no sean la del QR de SUNAT, sin hacer ninguna petición', async () => {
     const fetchMock = vi.fn();
+    const QR_PATH = '/v1/contribuyente/gre/comprobantes/descargaqr';
     for (const url of [
       'https://example.com/a.pdf',
       'http://e-factura.sunat.gob.pe/x',
       'file:///etc/passwd',
       'no es una url',
+      // Otras direcciones de sunat.gob.pe: antes pasaban por ser https del dominio.
+      'https://e-factura.sunat.gob.pe/otra/ruta?hashqr=abc',
+      `https://www.sunat.gob.pe${QR_PATH}?hashqr=abc`,
+      `https://e-factura.sunat.gob.pe:8443${QR_PATH}?hashqr=abc`,
+      `https://usuario:clave@e-factura.sunat.gob.pe${QR_PATH}?hashqr=abc`,
+      `http://e-factura.sunat.gob.pe${QR_PATH}?hashqr=abc`,
+      `https://e-factura.sunat.gob.pe${QR_PATH}`,
+      `https://e-factura.sunat.gob.pe${QR_PATH}?hashqr=`,
     ]) {
       await expect(downloadDespatchPdf(url, { fetch: fetchMock as unknown as typeof fetch })).rejects.toBeInstanceOf(
         SunatValidationError,
@@ -151,6 +160,105 @@ describe('downloadDespatchPdf', () => {
     await expect(downloadDespatchPdf(QR_URL, { fetch: fetchMock as unknown as typeof fetch })).rejects.toThrow(
       /no es un PDF/,
     );
+  });
+
+  const MiB = 1024 * 1024;
+
+  /** Cuerpo que entrega `chunks` partes de `chunkSize` bytes (la primera empieza con `first`) y cuenta cuántas pidió el lector. */
+  function countedBody(first: string, chunkSize: number, chunks: number) {
+    const state = { pulls: 0 };
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        state.pulls++;
+        const chunk = new Uint8Array(chunkSize).fill(0x20);
+        if (state.pulls === 1) chunk.set(new TextEncoder().encode(first));
+        controller.enqueue(chunk);
+        if (state.pulls === chunks) controller.close();
+      },
+    });
+    return { stream, state };
+  }
+
+  it('rechaza sin leer el cuerpo si Content-Length pasa de 10 MB, y no reintenta', async () => {
+    const { stream, state } = countedBody('%PDF-1.5', MiB, 20);
+    const fetchMock = vi.fn(
+      async () => new Response(stream, { status: 200, headers: { 'Content-Length': String(20 * MiB) } }),
+    );
+    const error = (await downloadDespatchPdf(QR_URL, {
+      fetch: fetchMock as unknown as typeof fetch,
+      retry: { delayMs: 1 },
+    }).catch((e: unknown) => e)) as SunatApiError;
+    expect(error).toBeInstanceOf(SunatApiError);
+    expect(error.message).toMatch(/tamaño máximo/);
+    expect(error.retryable).toBe(false);
+    expect(state.pulls).toBeLessThanOrEqual(1); // a lo sumo el que el stream pide solo al crearse
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('corta la descarga al pasar de 10 MB aunque no haya Content-Length', async () => {
+    const { stream, state } = countedBody('%PDF-1.5', MiB, 20);
+    const fetchMock = vi.fn(async () => new Response(stream, { status: 200 }));
+    const error = (await downloadDespatchPdf(QR_URL, {
+      fetch: fetchMock as unknown as typeof fetch,
+      retry: { delayMs: 1 },
+    }).catch((e: unknown) => e)) as SunatApiError;
+    expect(error).toBeInstanceOf(SunatApiError);
+    expect(error.message).toMatch(/tamaño máximo/);
+    expect(state.pulls).toBeLessThanOrEqual(12); // 11 partes leídas (> 10 MB) y una que el stream pide por adelantado
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('deja de leer una respuesta que no es PDF apenas lo detecta y guarda su comienzo', async () => {
+    const { stream, state } = countedBody('<html>Error de SUNAT</html>', 1024, 50);
+    const fetchMock = vi.fn(
+      async () => new Response(stream, { status: 200, headers: { 'Content-Type': 'text/html' } }),
+    );
+    const error = (await downloadDespatchPdf(QR_URL, { fetch: fetchMock as unknown as typeof fetch }).catch(
+      (e: unknown) => e,
+    )) as SunatApiError;
+    expect(error).toBeInstanceOf(SunatApiError);
+    expect(error.message).toMatch(/no es un PDF/);
+    expect(error.rawBody?.startsWith('<html>Error de SUNAT</html>')).toBe(true);
+    expect(state.pulls).toBeLessThanOrEqual(2);
+  });
+
+  it('si la conexión se corta a mitad del PDF, reintenta como un fallo de red', async () => {
+    const cut = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('%PDF-1.5\n'));
+        controller.error(new TypeError('terminated'));
+      },
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(cut, { status: 200 }))
+      .mockResolvedValueOnce(pdfResponse());
+    const result = await downloadDespatchPdf(QR_URL, {
+      fetch: fetchMock as unknown as typeof fetch,
+      retry: { delayMs: 1 },
+    });
+    expect(Buffer.from(result.pdf).toString('latin1')).toBe('%PDF-1.5\n%contenido de prueba');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('si la conexión se corta en todos los intentos, lanza SunatTransportError', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.error(new TypeError('terminated'));
+            },
+          }),
+          { status: 200 },
+        ),
+    );
+    const error = await downloadDespatchPdf(QR_URL, {
+      fetch: fetchMock as unknown as typeof fetch,
+      retry: { maxRetries: 1, delayMs: 1 },
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SunatTransportError);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 

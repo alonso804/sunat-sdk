@@ -183,7 +183,10 @@ if (sent.status === 'accepted' || sent.status === 'accepted_with_observations') 
 
 - Al escanear el QR, el teléfono **descarga** el PDF (la URL responde con un archivo, no con una página). Verificado con
   una guía real de SOL y una emitida por este SDK.
-- `downloadDespatchPdf` solo acepta URLs `https` de `*.sunat.gob.pe`, comprueba que el contenido sea un PDF y reintenta
+- Pásale a `downloadDespatchPdf` la `cdr.qrUrl` que guardaste al emitir, **no una URL que llegue de tus usuarios**.
+  Solo acepta la URL del QR tal como la entrega SUNAT
+  (`https://e-factura.sunat.gob.pe/v1/contribuyente/gre/comprobantes/descargaqr?hashqr=…`), sigue redirecciones solo
+  a `https` de `*.sunat.gob.pe`, comprueba que el contenido sea un PDF, corta la descarga si pasa de 10 MB y reintenta
   ante fallos de red o errores 5xx. No necesita credenciales.
 - Guarda el PDF y el CDR al emitir: ese servicio de SUNAT es **intermitente** (el 2026-11-01 respondió en menos de 1 s
   y luego se colgó en varias peticiones seguidas; responde con un encabezado de ambiente de desarrollo). La

@@ -598,11 +598,12 @@ export class SunatClient {
    * Descarga el PDF oficial de una GRE aceptada desde la URL del QR de su CDR (`cdr.qrUrl`). Sirve para reintentar
    * cuando `sendDespatch` con `downloadPdf` devolvió `pdfError`. No requiere credenciales.
    *
-   * @param qrUrl - `cdr.qrUrl` de la guía aceptada. Solo se aceptan URLs https de `*.sunat.gob.pe`.
+   * @param qrUrl - `cdr.qrUrl` de la guía aceptada, la que guardaste al emitir (no una URL que llegue de tus usuarios).
+   *   Solo se acepta la URL del QR de SUNAT (`https://e-factura.sunat.gob.pe/v1/contribuyente/gre/comprobantes/descargaqr?hashqr=…`).
    * @param options - `retry`: reintentos ante fallos de red o 5xx (4 por defecto, con pausas que se duplican desde 0,5 s).
    * @returns El PDF (`pdf`) y el nombre de archivo que sugiere SUNAT (`fileName`), si es seguro.
-   * @throws {SunatValidationError} Si la URL (o una redirección) no es https de sunat.gob.pe.
-   * @throws {SunatApiError} Si SUNAT responde con un error o con algo que no es un PDF.
+   * @throws {SunatValidationError} Si la URL no es la del QR de una GRE o una redirección sale de https de sunat.gob.pe.
+   * @throws {SunatApiError} Si SUNAT responde con un error, con algo que no es un PDF o con más de 10 MB.
    * @throws {SunatTransportError} Si la descarga falla por red tras los reintentos.
    */
   async downloadDespatchPdf(qrUrl: string, options: DespatchPdfRetryOptions = {}): Promise<DespatchPdf> {
