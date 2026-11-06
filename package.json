@@ -1,6 +1,6 @@
 {
   "name": "@alonso804/sunat-sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "SDK en TypeScript para integrarse directo con SUNAT (facturas y guías de remisión electrónicas) sin PSE/OSE",
   "license": "UNLICENSED",
   "repository": {
@@ -38,7 +38,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=22"

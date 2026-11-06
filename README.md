@@ -8,13 +8,15 @@ pensado para usarse como paquete privado desde otras aplicaciones (desktop / mó
 > La **factura electrónica (01)**, al contado y al crédito, funciona contra el ambiente **beta**; aún no se ha probado
 > en homologación ni producción.
 
+Cambios de cada versión y cómo actualizar: [CHANGELOG.md](CHANGELOG.md).
+
 | Capacidad                                                                                                                                       | Estado                                                                                                                   |
 | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | Factura 01, contado, PEN/USD, gravado/exonerado/inafecto                                                                                        | ✅ aceptada por SUNAT beta (40 de 40 en pruebas aleatorias)                                                              |
 | Firma XMLDSig, ZIP, SOAP `sendBill`, lectura del CDR                                                                                            | ✅                                                                                                                       |
 | Resumen para confirmar antes de emitir (`prepareInvoice`, `prepareDespatch`)                                                                    | ✅                                                                                                                       |
 | GRE remitente: XML UBL 2.1 + firma + API REST (token OAuth, ticket, CDR)                                                                        | ✅ probada en producción · validada con el XSD oficial                                                                   |
-| Validación local contra los XSD de UBL 2.1 (`xmllint`)                                                                                          | ✅ facturas y 4 variantes de GRE                                                                                         |
+| Validación local contra los XSD de UBL 2.1 (`xmllint-wasm`, sin instalar nada)                                                                  | ✅ facturas y 4 variantes de GRE                                                                                         |
 | Factura a crédito (cuotas), orden de compra y guías relacionadas                                                                                | ✅ reglas verificadas contra SUNAT beta (ver más abajo)                                                                  |
 | Descuentos, anticipos, detracción                                                                                                               | ⏳                                                                                                                       |
 | Notas de crédito / débito, boletas                                                                                                              | ⏳                                                                                                                       |
@@ -22,7 +24,8 @@ pensado para usarse como paquete privado desde otras aplicaciones (desktop / mó
 | Consulta de datos de un contribuyente por RUC (`consultRuc`: razón social, nombre comercial, estado, condición, domicilio, actividad principal) | ✅ implementada · sin credenciales · con el desafío de anti-bot en pie, usa el fallback de curl automático (ver sección) |
 | GRE transportista, motivos de importación/exportación, baja de GRE por API                                                                      | ⏳                                                                                                                       |
 | Lectura de comprobantes y guías emitidos (SIRE y otros)                                                                                         | ⏳                                                                                                                       |
-| Generación de PDF / QR                                                                                                                          | ⏳                                                                                                                       |
+| QR de la guía (`cdr.qrUrl`) y PDF oficial de SUNAT (`downloadDespatchPdf`)                                                                      | ✅ probado en producción                                                                                                 |
+| Representación impresa propia (PDF / QR) de facturas y guías                                                                                    | ⏳                                                                                                                       |
 
 ## Requisitos
 
@@ -239,7 +242,7 @@ Es de **solo lectura** y **no necesita certificado ni credenciales**: hace el mi
   del SDK; los primeros dos se reintentan solos (opción `retry`, igual que en `SunatClient`).
 - El RUC se valida antes de consultar (`isValidRuc`); un RUC inválido lanza `SunatValidationError` sin contactar a SUNAT.
 - El formulario pide el token del reCAPTCHA: al 02/11/2026 SUNAT no lo validaba (se envía texto aleatorio de 52
-  caracteres, sin cookies); tu script de referencia (`consulta_sunat.py`) sigue pasando con token aleatorio.
+  caracteres, sin cookies).
 - ⚠️ **Anti-bot** (revisado el 04/11/2026): SUNAT tiene este dominio detrás de Cloudflare. Puntúa al cliente por su
   huella TLS/HTTP: el `urllib` de Python y el **`curl` del sistema en Windows (Schannel) pasan**, mientras el TLS
   de Node (`fetch`, `https`, `http2`) recibe el desafío `403` ("Just a moment…", `cf-mitigated: challenge`) — y
@@ -256,12 +259,12 @@ Es de **solo lectura** y **no necesita certificado ni credenciales**: hace el mi
 - **¿El fallback necesita instalar algo?** Nada por defecto: `curl` viene integrado en Windows 10/11 (System32) y
   en macOS (`/usr/bin/curl`). En servidores Linux suele faltar solo en imágenes contenedorizadas
   (`apt install curl` / `apk add curl` / `dnf install curl`, según la base). El SDK lo comprueba una vez
-  (`isCurlAvailable()`); si falta, sigue en pie el error del desafío con las cookies como vía sin instalar nada.
+  (`isCurlAvailable()`); si falta, la consulta termina en el error del desafío.
   Nota por plataforma: el curl de Windows lleva Schannel (huella que pasa); el de macOS/Linux lleva
   OpenSSL/LibreSSL — es distinta de la de Node y probable que pase (igual que `urllib` de Python), pero sin
   verificar sobre esas plataformas: pruébalo ahí con `scripts/ruc-consult.ts`; si devolviera el desafío,
-  queda el error claro (`SunatApiError` código `desafio-antibot`) y las cookies. Cuando SUNAT retire el desafío,
-  el `fetch` de Node vuelve a servir solo, sin curl ni cookies.
+  queda el error claro (`SunatApiError` código `desafio-antibot`). Cuando SUNAT retire el desafío, el `fetch` de
+  Node vuelve a servir solo, sin curl.
 - El parseo depende de la página de SUNAT (estructura Bootstrap de "list-group" confirmada el 04/11/2026); si
   cambia y deja de extraer bien, corre `pnpm tsx scripts/ruc-consult.ts <RUC> --dump` y revisa el HTML guardado
   en `out/` para calibrar `src/ruc-consult/parse.ts`.
@@ -348,8 +351,8 @@ Plan por etapas (el paquete no depende de cómo viva el repositorio):
    sea el del dueño). El nombre sin scope `sunat-sdk` **ya existe en el npm público** (otro autor): no se puede publicar
    ahí y, desde un registro sin scope, un proyecto podría instalar el paquete equivocado. `package.json` ya lleva
    `publishConfig.registry = https://npm.pkg.github.com` y `access: restricted`, así que nunca sube al npm público.
-   - **Publicar (automático, workflow `Release`)**: sube `version` en `package.json` en una rama, fusiónala a `main`
-     por PR y, desde `main` actualizado, sube una etiqueta con esa versión:
+   - **Publicar (automático, workflow `Release`)**: en una rama, sube `version` en `package.json` y anota los cambios
+     en `CHANGELOG.md`; fusiónala a `main` por PR y, desde `main` actualizado, sube una etiqueta con esa versión:
      `git tag -s v0.2.0 -m v0.2.0 && git push origin v0.2.0`. El workflow comprueba que
      la etiqueta coincida con `package.json` y esté en `main`, corre Biome, typecheck, pruebas y build, y publica con
      `npm publish --ignore-scripts` usando el token del propio workflow, que solo existe en ese último paso: no hace
