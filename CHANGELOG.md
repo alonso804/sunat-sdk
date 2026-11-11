@@ -1,5 +1,11 @@
 # Cambios
 
+## Sin publicar
+
+- El paquete pasa de GitHub Packages (privado) a **npm** (público, con _provenance_) y se publica con licencia MIT.
+  Quien lo instaló desde GitHub Packages debe quitar el `.npmrc` con `@alonso804:registry=https://npm.pkg.github.com`.
+- Se actualizan `node-forge` (1.4.3) y `fast-xml-parser` (5.12.0) por avisos de seguridad.
+
 ## 0.2.0
 
 ### Antes de actualizar: cambios incompatibles

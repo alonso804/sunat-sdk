@@ -37,6 +37,16 @@ Cambios de cada versión y cómo actualizar: [CHANGELOG.md](CHANGELOG.md).
 - Node **22 o superior** (se desarrolla con Node 26 LTS; ver `.nvmrc`, compatible con `fnm use`) y pnpm 11.
 - Para producción: certificado digital (PFX) y credenciales SOL; ver el apartado de trámites más abajo.
 
+## Instalación
+
+```bash
+npm install @alonso804/sunat-sdk
+# o: pnpm add @alonso804/sunat-sdk
+```
+
+El paquete se publica en [npm](https://www.npmjs.com/package/@alonso804/sunat-sdk) con _provenance_: la insignia de la
+página confirma que se construyó desde este repositorio con GitHub Actions.
+
 ## Uso
 
 ```ts
@@ -343,47 +353,41 @@ Verificadas contra el texto de la resolución y sus anexos 12 y 14 (campos, cond
 
 ## Distribución
 
-Plan por etapas (el paquete no depende de cómo viva el repositorio):
+El paquete se llama `@alonso804/sunat-sdk` y se publica en **npmjs.com** (público). El nombre sin scope `sunat-sdk` ya
+lo tiene otro autor, por eso se usa el scope.
 
-1. **Desarrollo: enlace local.** En el proyecto que lo consume:
+- **Desarrollo local: enlace.** En el proyecto que lo consume:
 
-   ```bash
-   pnpm add link:../sunat-sdk   # crea "@alonso804/sunat-sdk": "link:../sunat-sdk"
-   ```
+  ```bash
+  pnpm add link:../sunat-sdk   # crea "@alonso804/sunat-sdk": "link:../sunat-sdk"
+  ```
 
-   y en este repo `pnpm dev` (tsup en modo watch) para que `dist/` se mantenga al día.
-2. **Servidor / CI: GitHub Packages (privado).** El paquete se llama `@alonso804/sunat-sdk` (GitHub exige que el scope
-   sea el del dueño). El nombre sin scope `sunat-sdk` **ya existe en el npm público** (otro autor): no se puede publicar
-   ahí y, desde un registro sin scope, un proyecto podría instalar el paquete equivocado. `package.json` ya lleva
-   `publishConfig.registry = https://npm.pkg.github.com` y `access: restricted`, así que nunca sube al npm público.
-   - **Publicar (automático, workflow `Release`)**: en una rama, sube `version` en `package.json` y anota los cambios
-     en `CHANGELOG.md`; fusiónala a `main` por PR y, desde `main` actualizado, sube una etiqueta con esa versión:
-     `git tag -s v0.2.0 -m v0.2.0 && git push origin v0.2.0`. El workflow comprueba que
-     la etiqueta coincida con `package.json` y esté en `main`, corre Biome, typecheck, pruebas y build, y publica con
-     `npm publish --ignore-scripts` usando el token del propio workflow, que solo existe en ese último paso: no hace
-     falta ningún token personal. Si GitHub lo rechaza con
-     403, en la página del paquete → _Package settings_ → **Manage Actions access**, agrega este repositorio con rol
-     _Write_.
-   - **Publicar a mano (alternativa)**: así se publicó la 0.1.0. Agrega el permiso con
-     `gh auth refresh -h github.com -s write:packages,read:packages`, publica con `npm publish` usando un
-     `.npmrc` temporal con `//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}` y
-     `NODE_AUTH_TOKEN=$(gh auth token)`, y quita el permiso después con
-     `gh auth refresh -h github.com -r write:packages,read:packages`.
-   - **Consumir**: en el proyecto de la app, un `.npmrc` con `@alonso804:registry=https://npm.pkg.github.com` y
-     `//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}` (PAT _classic_ con `read:packages`; el `.npmrc` sí
-     puede ir en git, el token no). No uses el nombre `GITHUB_TOKEN` en tu máquina: si existe, `gh` lo usa en
-     lugar de tus cuentas.
-   - **CI**: el workflow `CI` (Biome, typecheck, pruebas y build, en una máquina limpia con Linux) corre en cada
-     pull request (al abrirlo y con cada push posterior a su rama, sobre el resultado de fusionarlo con `main`), cuando
-     `main` cambia y a mano desde la pestaña Actions; una rama sin PR no lo dispara. Las pruebas contra SUNAT beta no
-     corren ahí. Con el plan gratuito el CI no puede ser obligatorio para fusionar: revisa el ✓ del PR antes.
-   - **`main` solo por PR**: GitHub Free no permite proteger ramas en repositorios privados, así que hay dos controles
-     en su lugar. El hook `.githooks/pre-push` rechaza en tu máquina el push directo a `main` (actívalo una vez por clon
-     con `git config core.hooksPath .githooks`; `--no-verify` lo salta). El workflow `Main por PR` no lo impide en
-     GitHub, pero falla y te avisa si a `main` llega un commit que no salió de un PR fusionado, o un push forzado.
-     Además, Actions exige que toda acción esté fijada por SHA (opción del repositorio).
-3. **Plan B: monorepo.** Mover esta carpeta a `packages/sunat-sdk` y consumirla con `"@alonso804/sunat-sdk": "workspace:*"`
-   (sin registro ni tokens).
+  y en este repo `pnpm dev` (tsup en modo watch) para que `dist/` se mantenga al día.
+- **Publicar (automático, workflow `Release`).** En una rama, sube `version` en `package.json` y anota los cambios en
+  `CHANGELOG.md`; fusiónala a `main` por PR y, desde `main` actualizado, sube una etiqueta con esa versión:
+  `git tag -s v0.3.0 -m v0.3.0 && git push origin v0.3.0`. El workflow comprueba que la etiqueta coincida con
+  `package.json` y esté en `main`, corre Biome, typecheck, pruebas y build, y publica con `npm publish`.
+  Usa _Trusted Publishing_ (OIDC): no hay ningún token de npm guardado en GitHub, y npm añade la insignia de
+  _provenance_.
+- **Primera publicación (solo una vez).** Un paquete nuevo no puede tener todavía un _Trusted Publisher_, así que la
+  primera versión se publica a mano desde tu máquina, con 2FA:
+
+  ```bash
+  pnpm install --frozen-lockfile && pnpm check && pnpm typecheck && pnpm test && pnpm build
+  npm publish --access public --no-provenance   # pide el código 2FA
+  ```
+
+  Después, en npmjs.com → el paquete → _Settings_ → _Trusted Publisher_ → GitHub Actions: usuario `alonso804`,
+  repositorio `sunat-sdk`, workflow `release.yml`. Desde ahí, las siguientes versiones salen solo con la etiqueta.
+- **CI.** El workflow `CI` (Biome, typecheck, pruebas y build, en una máquina limpia con Linux) corre en cada pull
+  request, cuando `main` cambia y a mano desde la pestaña Actions. Las pruebas contra SUNAT beta no corren ahí
+  (`pnpm test:beta` las ejecuta a mano).
+- **`main` solo por PR.** La rama está protegida en GitHub: exige PR y que pase el CI. El hook `.githooks/pre-push`
+  rechaza además el push directo a `main` en tu máquina (actívalo una vez por clon con
+  `git config core.hooksPath .githooks`). El workflow `Main por PR` avisa si a `main` llega un commit que no salió de
+  un PR fusionado. Actions exige que toda acción esté fijada por SHA (opción del repositorio).
+- **Plan B: monorepo.** Mover esta carpeta a `packages/sunat-sdk` y consumirla con
+  `"@alonso804/sunat-sdk": "workspace:*"` (sin registro ni tokens).
 
 ## Antes de pasar a producción (trámites en SOL, los hace el titular)
 

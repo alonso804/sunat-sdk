@@ -3,13 +3,30 @@
   "version": "0.2.0",
   "description": "SDK en TypeScript para integrarse directo con SUNAT (facturas y guías de remisión electrónicas) sin PSE/OSE",
   "license": "MIT",
+  "author": "Alonso Barrios",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/alonso804/sunat-sdk.git"
+    "url": "git+https://github.com/alonso804/sunat-sdk.git"
   },
+  "homepage": "https://github.com/alonso804/sunat-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/alonso804/sunat-sdk/issues"
+  },
+  "keywords": [
+    "sunat",
+    "peru",
+    "factura-electronica",
+    "comprobantes-electronicos",
+    "guia-de-remision",
+    "gre",
+    "ubl",
+    "cpe",
+    "typescript"
+  ],
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com",
-    "access": "restricted"
+    "registry": "https://registry.npmjs.org",
+    "access": "public",
+    "provenance": true
   },
   "type": "module",
   "main": "./dist/index.cjs",
