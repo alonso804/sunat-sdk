@@ -1,6 +1,6 @@
 {
   "name": "@alonso804/sunat-sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "SDK en TypeScript para integrarse directo con SUNAT (facturas y guías de remisión electrónicas) sin PSE/OSE",
   "license": "MIT",
   "author": "Alonso Barrios",
