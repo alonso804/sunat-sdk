@@ -2,7 +2,7 @@ name: Release
 
 # Publica el paquete en npmjs.com al subir una etiqueta de versión, por ejemplo v0.3.0:
 #   1. Sube "version" en package.json y haz commit en main.
-#   2. git tag -s v0.3.0 -m v0.3.0 && git push origin v0.3.0   (etiqueta firmada: tu git tiene tag.gpgsign)
+#   2. git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0   (anotada; la firma no es obligatoria)
 # Publica con Trusted Publishing (OIDC): no hay ningún token de npm guardado en GitHub. Hay que registrar este repo y
 # este workflow como "Trusted Publisher" en npmjs.com (Package settings). npm añade además la insignia de provenance.
 on:

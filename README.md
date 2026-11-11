@@ -365,7 +365,7 @@ lo tiene otro autor, por eso se usa el scope.
   y en este repo `pnpm dev` (tsup en modo watch) para que `dist/` se mantenga al día.
 - **Publicar (automático, workflow `Release`).** En una rama, sube `version` en `package.json` y anota los cambios en
   `CHANGELOG.md`; fusiónala a `main` por PR y, desde `main` actualizado, sube una etiqueta con esa versión:
-  `git tag -s v0.3.0 -m v0.3.0 && git push origin v0.3.0`. El workflow comprueba que la etiqueta coincida con
+  `git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0` (anotada; la firma no es obligatoria). El workflow comprueba que la etiqueta coincida con
   `package.json` y esté en `main`, corre Biome, typecheck, pruebas y build, y publica con `npm publish`.
   Usa _Trusted Publishing_ (OIDC): no hay ningún token de npm guardado en GitHub, y npm añade la insignia de
   _provenance_.
