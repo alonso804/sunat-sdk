@@ -1,12 +1,17 @@
 # sunat-sdk
 
 SDK en TypeScript para emitir comprobantes electrónicos **directo a SUNAT** (sin PSE ni OSE),
-pensado para usarse como paquete privado desde otras aplicaciones (desktop / móvil vía un backend Node).
+pensado para usarse desde otras aplicaciones (desktop / móvil vía un backend Node).
 
 > **Estado: en construcción.** La **guía de remisión del remitente (GRE 09)** está **probada en producción**
 > (SUNAT no tiene ambiente de pruebas para la GRE) y validada contra el esquema UBL 2.1.
 > La **factura electrónica (01)**, al contado y al crédito, funciona contra el ambiente **beta**; aún no se ha probado
 > en homologación ni producción.
+
+> **Aviso legal.** Este proyecto es independiente: **no es un producto oficial de SUNAT** ni está afiliado a ella.
+> Se distribuye bajo licencia [MIT](LICENSE), **sin garantía de ningún tipo**. Emitir comprobantes tiene efectos
+> tributarios: úsalo bajo tu responsabilidad y valida tu integración con tu contador y con el ambiente de homologación
+> de SUNAT antes de emitir en producción.
 
 Cambios de cada versión y cómo actualizar: [CHANGELOG.md](CHANGELOG.md).
 
