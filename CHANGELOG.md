@@ -1,5 +1,16 @@
 # Cambios
 
+## 0.4.0
+
+### Cambio incompatible: se quita la consulta RUC
+
+- **Se elimina `consultRuc` y toda la entrada `@alonso804/sunat-sdk/ruc`** (`consultRuc`, `RucConsultStatus`,
+  `RucPageError`, `curlFetch`, `isCurlAvailable`). SUNAT puso el portal de consulta (e-consultaruc) detrás de un
+  desafío anti-bot de Cloudflare que ni el `fetch` de Node ni el `curl` del sistema superan, y no hay una API oficial
+  de SUNAT para datos de RUC. Una función que falla siempre no sirve. Quien la usaba debe quitar esos imports; la
+  emisión de facturas y guías no cambia. `isValidRuc` sigue en la entrada principal.
+- Se quitó `scripts/ruc-consult.ts`.
+
 ## 0.3.0
 
 - El paquete pasa de GitHub Packages (privado) a **npm** (público, con _provenance_) y se publica con licencia MIT.

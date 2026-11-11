@@ -76,8 +76,7 @@ export class SunatApiError extends SunatError {
     /** Código HTTP de la respuesta (o el que asigna el SDK, p. ej. 310 si hay demasiadas redirecciones). */
     readonly status: number,
     /**
-     * Código de error de SUNAT (`cod`, o `error` en el token OAuth), si la respuesta lo trae. La excepción es
-     * `desafio-antibot`, que pone el SDK cuando `consultRuc` recibe el desafío de Cloudflare.
+     * Código de error de SUNAT (`cod`, o `error` en el token OAuth), si la respuesta lo trae.
      */
     readonly code?: string,
     /** Errores de validación del servicio (`errors: [{ codError, desError }]` con HTTP 422). */
