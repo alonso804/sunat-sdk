@@ -11,7 +11,6 @@ import {
   SunatFaultKind,
   TransportMode,
 } from '../src';
-import { RucConsultStatus } from '../src/ruc-consult';
 import { sampleDespatch, sampleInvoice, TEST_ISSUER, testCertificate } from './helpers';
 
 describe('estados `as const` (objeto y tipo con el mismo nombre)', () => {
@@ -28,7 +27,6 @@ describe('estados `as const` (objeto y tipo con el mismo nombre)', () => {
       pending: 'pending',
     });
     expect(SunatFaultKind).toEqual({ exception: 'exception', rejected: 'rejected', unknown: 'unknown' });
-    expect(RucConsultStatus).toEqual({ found: 'found', notFound: 'not_found' });
   });
 
   it('SunatFaultError.kind devuelve valores de SunatFaultKind', () => {
@@ -41,16 +39,9 @@ describe('estados `as const` (objeto y tipo con el mismo nombre)', () => {
     const send: SendInvoiceStatus = SendInvoiceStatus.acceptedWithObservations;
     const despatch: DespatchStatus = 'pending'; // el texto también vale
     const kind: SunatFaultKind = SunatFaultKind.rejected;
-    const ruc: RucConsultStatus = RucConsultStatus.notFound;
     // @ts-expect-error 'pending' no es un estado de factura
     const invalid: SendInvoiceStatus = 'pending';
-    expect([send, despatch, kind, ruc, invalid]).toEqual([
-      'accepted_with_observations',
-      'pending',
-      'rejected',
-      'not_found',
-      'pending',
-    ]);
+    expect([send, despatch, kind, invalid]).toEqual(['accepted_with_observations', 'pending', 'rejected', 'pending']);
   });
 });
 
