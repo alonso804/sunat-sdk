@@ -1,16 +1,17 @@
 name: Release
 
-# Publica el paquete en GitHub Packages (privado) al subir una etiqueta de versión, por ejemplo v0.2.0:
+# Publica el paquete en npmjs.com al subir una etiqueta de versión, por ejemplo v0.3.0:
 #   1. Sube "version" en package.json y haz commit en main.
-#   2. git tag -s v0.2.0 -m v0.2.0 && git push origin v0.2.0   (etiqueta firmada: tu git tiene tag.gpgsign)
-# Usa el token del propio workflow (GITHUB_TOKEN con packages: write): no hace falta ningún token personal.
+#   2. git tag -s v0.3.0 -m v0.3.0 && git push origin v0.3.0   (etiqueta firmada: tu git tiene tag.gpgsign)
+# Publica con Trusted Publishing (OIDC): no hay ningún token de npm guardado en GitHub. Hay que registrar este repo y
+# este workflow como "Trusted Publisher" en npmjs.com (Package settings). npm añade además la insignia de provenance.
 on:
   push:
     tags: ["v*"]
 
 permissions:
   contents: read
-  packages: write
+  id-token: write # OIDC: así npm verifica que la publicación viene de este workflow
 
 # Nunca dos publicaciones a la vez.
 concurrency:
@@ -19,7 +20,7 @@ concurrency:
 
 jobs:
   publish:
-    name: Publicar en GitHub Packages
+    name: Publicar en npm
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -51,8 +52,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-          registry-url: https://npm.pkg.github.com
-          scope: "@alonso804"
+          registry-url: https://registry.npmjs.org
 
       - run: pnpm install --frozen-lockfile
 
@@ -63,8 +63,6 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
-      # El token solo existe en este paso. --ignore-scripts evita que prepublishOnly vuelva a correr con el token
-      # presente (dist ya se construyó en el paso anterior).
+      # La autenticación es el token OIDC efímero de este job (sin secretos). --ignore-scripts evita que prepublishOnly
+      # vuelva a correr aquí (dist ya se construyó en el paso anterior).
       - run: npm publish --ignore-scripts
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
