@@ -13,21 +13,38 @@ export type ResolvedPayment =
 
 const CENT = new D('0.01');
 
+/** Detracción que SUNAT descuenta del monto neto pendiente (anexo 1, campo 64-A). Es en soles. */
+export type PaymentDeduction = { amount: Dec; inInvoiceCurrency: boolean };
+
 /**
  * Completa y valida la forma de pago con el total ya calculado de la factura.
  *
- * - Monto neto pendiente: si no se indica, es el total. No puede ser mayor al total (regla de SOL y de SUNAT, 3265).
+ * - Monto neto pendiente: si no se indica, es el total menos la detracción (SOL lo calcula así); si la factura no es en
+ *   soles hay que indicarlo. No puede ser mayor al total (regla de SOL y de SUNAT, 3265).
  * - Fechas: cada vencimiento debe ser POSTERIOR a la fecha de emisión (SUNAT rechaza con 3267 una fecha anterior o igual).
  *   No importa el orden de las cuotas (SUNAT acepta fechas desordenadas).
  * - Cuotas: si ninguna trae monto, se reparte el monto neto pendiente en partes iguales y la diferencia de centavos
  *   va en la última; si todas lo traen, deben sumar exactamente el monto neto pendiente (SUNAT rechaza con 3319 si no suman). No se admiten mezclas.
  */
-export function resolvePayment(payment: Invoice['payment'], total: Dec, issueDate: string): ResolvedPayment {
+export function resolvePayment(
+  payment: Invoice['payment'],
+  total: Dec,
+  issueDate: string,
+  deduction?: PaymentDeduction,
+): ResolvedPayment {
   if (payment.type === PaymentType.cash) return { type: PaymentType.cash };
 
   const issues: Array<{ path: string; message: string }> = [];
   const totalCents = round(total, 2);
-  const netPending = payment.netPending === undefined ? totalCents : round(dec(payment.netPending), 2);
+  const defaultNetPending = deduction?.inInvoiceCurrency ? totalCents.minus(round(deduction.amount, 2)) : totalCents;
+  const netPending = payment.netPending === undefined ? defaultNetPending : round(dec(payment.netPending), 2);
+
+  if (deduction && !deduction.inInvoiceCurrency && payment.netPending === undefined) {
+    issues.push({
+      path: 'payment.netPending',
+      message: 'Con detracción en una factura que no es en soles, indica el monto neto pendiente de pago',
+    });
+  }
 
   if (netPending.gt(totalCents)) {
     issues.push({

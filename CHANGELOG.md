@@ -1,5 +1,16 @@
 # Cambios
 
+## Sin publicar
+
+### Nuevo: detracción en facturas
+
+- `InvoiceInput.detraction: { account, amount? }` para facturas de **servicios** sujetas a detracción: tipo de operación
+  `1001`, leyenda `2006`, código `037`, medio de pago `001` y 12 % (los datos fijos de SOL, con la misma estructura que
+  el XML de SOL); el monto es el 12 % del total si no se indica. A crédito, el monto neto pendiente por defecto descuenta
+  la detracción. Sin este campo la factura sale como hasta ahora. Nuevos: `DetractionSchema`, tipo `Detraction`,
+  `InvoiceSummary.detraction`.
+- Probado contra SUNAT **beta** (sin observaciones); no probado en producción. Ver el README.
+
 ## 0.4.0
 
 ### Cambio incompatible: se quita la consulta RUC
