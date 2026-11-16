@@ -56,7 +56,10 @@ const invoiceCustomerShape = {
   ruc: z.string().refine(isValidRuc, 'RUC del cliente inválido'),
   /** Razón social del cliente (hasta 200 caracteres). */
   name: z.string().min(1).max(200),
-  /** Dirección del cliente (opcional, hasta 200 caracteres). */
+  /**
+   * Dirección del cliente (opcional, hasta 200 caracteres). SOL la imprime como "Dirección del Cliente" y es la que
+   * se consigna como dirección donde se entrega el bien o se presta el servicio (SOL no emite un bloque de entrega aparte).
+   */
   address: z.string().max(200).optional(),
 };
 export const InvoiceCustomerSchema: z.ZodObject<typeof invoiceCustomerShape> = z.object(invoiceCustomerShape);
@@ -154,6 +157,24 @@ const relatedDespatchShape = {
 /** Guía de remisión relacionada con la operación que se factura. */
 export const RelatedDespatchSchema: z.ZodObject<typeof relatedDespatchShape> = z.object(relatedDespatchShape);
 
+const detractionShape = {
+  /** Cuenta de detracciones del emisor en el Banco de la Nación: 11 dígitos, sin guiones (p. ej. "00116008076"). */
+  account: z
+    .string()
+    .trim()
+    .regex(/^\d{11}$/, 'La cuenta del Banco de la Nación tiene 11 dígitos, sin guiones'),
+  /**
+   * Monto de la detracción **en soles**, como lo escribirías en SOL. Si se omite, se calcula el 12 % del total
+   * (solo si la factura es en soles; en dólares es obligatorio). Debe estar a menos de S/ 1 del 12 % del total.
+   */
+  amount: PositiveNumeric.optional(),
+};
+/**
+ * Detracción de una factura de **servicios** (SOL: "Información de Detracción"). Los demás datos son fijos: tipo de
+ * operación 1001, código 037 (demás servicios gravados con el IGV), medio de pago 001 (depósito en cuenta) y 12 %.
+ */
+export const DetractionSchema: z.ZodObject<typeof detractionShape> = z.object(detractionShape);
+
 const invoiceShape = {
   /** Serie de la factura: F + 3 caracteres, por ejemplo "F001". */
   series: z.string().regex(/^F[A-Z0-9]{3}$/, 'La serie de una factura es "F" + 3 caracteres, por ejemplo F001'),
@@ -163,7 +184,7 @@ const invoiceShape = {
   issuedAt: z.date().optional(),
   /** Moneda (`Currency`): PEN por defecto. */
   currency: z.enum(Currency).default(Currency.PEN),
-  /** Catálogo 51: 0101 = venta interna. */
+  /** Catálogo 51: 0101 = venta interna. Con `detraction` se emite como 1001 (no indiques otro tipo). */
   operationType: z
     .string()
     .regex(/^\d{4}$/)
@@ -174,6 +195,8 @@ const invoiceShape = {
   items: z.array(InvoiceItemSchema).min(1).max(500),
   /** Observaciones libres que se imprimen en el comprobante. */
   note: z.string().max(500).optional(),
+  /** Solo si la operación está sujeta a detracción (servicios). Sin este campo la factura sale sin detracción. */
+  detraction: DetractionSchema.optional(),
   /** Forma de pago. Por defecto al contado. */
   payment: InvoicePaymentSchema.default({ type: PaymentType.cash }),
   /** Número de la orden de compra del cliente (hasta 20 caracteres). */
@@ -195,6 +218,8 @@ export type Issuer = z.output<typeof IssuerSchema>;
 export type InvoiceInput = z.input<typeof InvoiceSchema>;
 /** Factura ya validada, con los valores por defecto aplicados. */
 export type Invoice = z.output<typeof InvoiceSchema>;
+/** Detracción de una factura ya validada. */
+export type Detraction = z.output<typeof DetractionSchema>;
 /** Línea de una factura ya validada. */
 export type InvoiceItem = z.output<typeof InvoiceItemSchema>;
 /** Forma de pago de una factura ya validada (contado o crédito con cuotas). */

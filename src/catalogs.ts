@@ -137,3 +137,21 @@ export const CREDIT_NOTE_REASONS = {
   '10': 'Otros conceptos',
 } as const;
 export type CreditNoteReason = keyof typeof CREDIT_NOTE_REASONS;
+
+/**
+ * Detracción (SPOT, D. Leg. 940) tal como el negocio la usa en SOL: solo servicios, siempre con estos datos
+ * (solo cambian la cuenta y el monto). Catálogos 51, 52, 54 y 59.
+ */
+export const DETRACTION = {
+  /** Catálogo 51: tipo de operación "Operación sujeta a detracción". */
+  operationType: '1001',
+  /** Catálogo 54: 037 = demás servicios gravados con el IGV. */
+  goodsServiceCode: '037',
+  /** Catálogo 59: 001 = depósito en cuenta. */
+  paymentMeansCode: '001',
+  /** Porcentaje de la detracción de los servicios del código 037. */
+  percent: '12.00',
+  /** Catálogo 52: código y texto de la leyenda, como los escribe SOL en el XML (el PDF la imprime más larga). */
+  legendCode: '2006',
+  legendText: 'Operación sujeta a detracción',
+} as const;

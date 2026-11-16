@@ -1,5 +1,5 @@
 import { amountInWords } from '../amount-in-words';
-import { DOCUMENT_TYPE } from '../catalogs';
+import { DETRACTION, DOCUMENT_TYPE } from '../catalogs';
 import {
   amount,
   customerParty,
@@ -12,6 +12,7 @@ import {
 } from '../ubl-xml';
 import { escapeXml as esc, limaDateTime, singleLine } from '../xml';
 import type { CalculatedInvoice } from './calculate';
+import type { ResolvedDetraction } from './detraction';
 import type { ResolvedPayment } from './payment';
 import { type Invoice, type Issuer, PaymentType } from './schema';
 
@@ -30,6 +31,22 @@ function paymentTerms(payment: ResolvedPayment, currency: string): string {
     )
     .join('');
   return `${head}<cbc:PaymentMeansID>Credito</cbc:PaymentMeansID>${amount('Amount', payment.netPending, currency)}</cac:PaymentTerms>${installments}`;
+}
+
+/** Detracción: cuenta y medio de pago (`cac:PaymentMeans`) y código del servicio, porcentaje y monto en soles. */
+function detractionBlocks(detraction: ResolvedDetraction | undefined): { means: string; terms: string } {
+  if (!detraction) return { means: '', terms: '' };
+  return {
+    means:
+      '<cac:PaymentMeans><cbc:ID>Detraccion</cbc:ID>' +
+      `<cbc:PaymentMeansCode>${DETRACTION.paymentMeansCode}</cbc:PaymentMeansCode>` +
+      `<cac:PayeeFinancialAccount><cbc:ID>${detraction.account}</cbc:ID></cac:PayeeFinancialAccount></cac:PaymentMeans>`,
+    terms:
+      '<cac:PaymentTerms><cbc:ID>Detraccion</cbc:ID>' +
+      `<cbc:PaymentMeansID>${DETRACTION.goodsServiceCode}</cbc:PaymentMeansID>` +
+      `<cbc:PaymentPercent>${DETRACTION.percent}</cbc:PaymentPercent>` +
+      `${amount('Amount', detraction.amount, 'PEN')}</cac:PaymentTerms>`,
+  };
 }
 
 /** Orden de compra y guías relacionadas, en el orden que fija el esquema UBL (antes de cac:Signature). */
@@ -62,12 +79,16 @@ export function buildInvoiceXml(params: {
   invoice: Invoice;
   calculation: CalculatedInvoice;
   payment: ResolvedPayment;
+  /** Detracción ya resuelta (ver `resolveDetraction`); fuerza el tipo de operación 1001. */
+  detraction?: ResolvedDetraction | undefined;
   issuedAt: Date;
 }): string {
-  const { issuer, invoice, calculation, payment, issuedAt } = params;
+  const { issuer, invoice, calculation, payment, detraction, issuedAt } = params;
   const { totals, lines } = calculation;
   const cur = invoice.currency;
   const { date, time } = limaDateTime(issuedAt);
+  const operationType = detraction ? DETRACTION.operationType : invoice.operationType;
+  const detractionXml = detractionBlocks(detraction);
 
   return (
     '<?xml version="1.0" encoding="UTF-8"?>' +
@@ -78,14 +99,19 @@ export function buildInvoiceXml(params: {
     `<cbc:ID>${invoice.series}-${invoice.number}</cbc:ID>` +
     `<cbc:IssueDate>${date}</cbc:IssueDate>` +
     `<cbc:IssueTime>${time}</cbc:IssueTime>` +
-    `<cbc:InvoiceTypeCode listID="${invoice.operationType}">${DOCUMENT_TYPE.invoice}</cbc:InvoiceTypeCode>` +
+    `<cbc:InvoiceTypeCode listID="${operationType}">${DOCUMENT_TYPE.invoice}</cbc:InvoiceTypeCode>` +
     `<cbc:Note languageLocaleID="1000">${esc(amountInWords(totals.payable, cur))}</cbc:Note>` +
+    (detraction
+      ? `<cbc:Note languageLocaleID="${DETRACTION.legendCode}">${esc(DETRACTION.legendText)}</cbc:Note>`
+      : '') +
     (invoice.note ? `<cbc:Note>${esc(singleLine(invoice.note))}</cbc:Note>` : '') +
     `<cbc:DocumentCurrencyCode>${cur}</cbc:DocumentCurrencyCode>` +
     references(invoice) +
     signatureBlock(issuer) +
     supplierParty(issuer) +
     customerParty(invoice.customer) +
+    detractionXml.means +
+    detractionXml.terms +
     paymentTerms(payment, cur) +
     taxTotalBlock(totals, cur) +
     '<cac:LegalMonetaryTotal>' +

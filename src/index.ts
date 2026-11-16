@@ -40,6 +40,7 @@ export { GRE_ENDPOINTS } from './gre/api';
 export type { DespatchPdf, DespatchPdfOptions } from './gre/pdf';
 export { downloadDespatchPdf } from './gre/pdf';
 export type {
+  Detraction,
   Invoice,
   InvoiceInput,
   InvoiceItem,
@@ -49,7 +50,7 @@ export type {
   RelatedDespatch,
 } from './invoice/schema';
 
-export { InvoiceSchema, IssuerSchema, PaymentType } from './invoice/schema';
+export { DetractionSchema, InvoiceSchema, IssuerSchema, PaymentType } from './invoice/schema';
 export type { RetryOptions } from './retry';
 export { isValidRuc } from './ruc';
 export type { CertificateCheck, CertificateInfo, SigningKey } from './signing/certificate';

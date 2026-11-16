@@ -1,5 +1,5 @@
 import { amountInWords } from './amount-in-words';
-import type { Currency } from './catalogs';
+import { Currency, DETRACTION } from './catalogs';
 import { type Cdr, readCdrFromApplicationResponse } from './cdr';
 import { ENDPOINTS, Environment } from './config';
 import type { CreditNoteInput } from './credit-note/schema';
@@ -17,6 +17,7 @@ import { SunatApiError, SunatError, SunatFaultError, SunatFaultKind, SunatValida
 import { getTicketStatus, postDespatch, requestToken, type Token } from './gre/api';
 import { type DespatchPdf, type DespatchPdfOptions, downloadDespatchPdf } from './gre/pdf';
 import { calculateInvoice } from './invoice/calculate';
+import { resolveDetraction } from './invoice/detraction';
 import { resolvePayment } from './invoice/payment';
 import {
   type InvoiceInput,
@@ -123,6 +124,8 @@ export type InvoiceSummary = {
         netPending: string;
         installments: Array<{ number: number; dueDate: string; amount: string }>;
       };
+  /** Detracción, si la hay: cuenta del Banco de la Nación, porcentaje y monto en soles. */
+  detraction?: { account: string; percent: string; amount: string };
   /** Orden de compra, si se indicó. */
   purchaseOrder?: string;
   /** Guías relacionadas (`09` remitente, `31` transportista) como `SERIE-NÚMERO`. */
@@ -308,8 +311,14 @@ export class SunatClient {
 
     const issuedAt = invoice.issuedAt ?? this.#config.now?.() ?? new Date();
     const calculation = calculateInvoice(invoice);
-    const payment = resolvePayment(invoice.payment, calculation.totals.payable, limaDateTime(issuedAt).date);
-    const unsignedXml = buildInvoiceXml({ issuer: this.issuer, invoice, calculation, payment, issuedAt });
+    const detraction = resolveDetraction(invoice, calculation.totals.payable);
+    const payment = resolvePayment(
+      invoice.payment,
+      calculation.totals.payable,
+      limaDateTime(issuedAt).date,
+      detraction && { amount: detraction.amount, inInvoiceCurrency: invoice.currency === Currency.PEN },
+    );
+    const unsignedXml = buildInvoiceXml({ issuer: this.issuer, invoice, calculation, payment, detraction, issuedAt });
     const signedXml = signUblXml(
       unsignedXml,
       this.#config.signingKey,
@@ -352,6 +361,11 @@ export class SunatClient {
                   amount: fmt2(i.amount),
                 })),
               },
+        ...(detraction
+          ? {
+              detraction: { account: detraction.account, percent: DETRACTION.percent, amount: fmt2(detraction.amount) },
+            }
+          : {}),
         ...(invoice.purchaseOrder ? { purchaseOrder: invoice.purchaseOrder } : {}),
         relatedDespatches: invoice.relatedDespatches.map((d) => ({ type: d.type, number: `${d.series}-${d.number}` })),
       },

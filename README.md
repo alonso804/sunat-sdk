@@ -23,7 +23,8 @@ Cambios de cada versión y cómo actualizar: [CHANGELOG.md](CHANGELOG.md).
 | GRE remitente: XML UBL 2.1 + firma + API REST (token OAuth, ticket, CDR)       | ✅ probada en producción · validada con el XSD oficial      |
 | Validación local contra los XSD de UBL 2.1 (`xmllint-wasm`, sin instalar nada) | ✅ facturas y 4 variantes de GRE                            |
 | Factura a crédito (cuotas), orden de compra y guías relacionadas               | ✅ reglas verificadas contra SUNAT beta (ver más abajo)     |
-| Descuentos, anticipos, detracción                                              | ⏳                                                          |
+| Detracción (servicios)                                                         | ✅ aceptadas por SUNAT beta · no probadas en producción     |
+| Descuentos, anticipos                                                          | ⏳                                                          |
 | Nota de crédito (07) sobre facturas, motivos 01–10                             | ✅ aceptada por SUNAT beta · no probada en producción       |
 | Notas de crédito motivo 13 (cuotas), notas de débito, boletas                  | ⏳                                                          |
 | Consulta de estado / CDR de facturas (`getStatusCdr`, `getInvoiceStatus`)      | ✅ implementada · solo existe en producción                 |
@@ -291,6 +292,37 @@ Si un error llega hasta tu código es porque persistió tras los reintentos o po
 El paquete corre en **Node** (firma, SOAP y REST necesitan secretos y `crypto`); la app móvil/desktop debe llamarlo
 a través de un backend, nunca firmar en el dispositivo.
 
+#### Detracción y dirección de entrega
+
+Replican las opciones del formulario de factura de SOL que usa el negocio: _establecimiento del emisor donde se entrega_
+= **No** (el emisor sale con el código `0000`) y _dirección donde se entrega el bien o se presta el servicio_ = **Sí**.
+Contrastado con el XML que genera SOL (factura E001-880): SOL **no** emite un bloque de entrega (`cac:Delivery` ni
+`cac:DeliveryTerms`); la dirección va en la del cliente. Por eso basta con `customer.address`, que SOL imprime como
+"Dirección del Cliente". (`cac:Delivery` es la ruta del anexo de la RS 123-2022, pero SUNAT la trata como **venta
+itinerante** y observa 4266: falta la leyenda 2005.)
+
+```ts
+client.prepareInvoice({
+  series: 'F001',
+  number: 16,
+  customer: { ruc: '20123456786', name: 'CLIENTE SAC', address: 'JR. MORRO SOLAR 1010 URB. SANTIAGO DE SURCO' },
+  items: [{ description: 'RECARGA DE EXTINTORES', quantity: 1, unitValue: 1783, unit: 'ZZ' }],
+  // Solo si la operación está sujeta a detracción (servicios). Sin `detraction`, la factura sale sin detracción.
+  detraction: { account: '00116008076' /* cuenta del emisor en el Banco de la Nación (11 dígitos) */ },
+});
+```
+
+- **Detracción:** lo único que cambia entre facturas es la cuenta y el monto. El resto es fijo, como en SOL: tipo de
+  operación `1001`, leyenda `2006`, código `037` (demás servicios gravados con el IGV), medio de pago `001` y 12 %. El
+  XML tiene la misma estructura que el de SOL (contrastado con E001-880). El monto es el 12 % del total con 2 decimales
+  (`summary.detraction.amount`); puedes escribirlo (`amount`) si el de SOL difiere (debe estar a menos de S/ 1 del 12 %).
+  Es **en soles aunque la factura sea en dólares** (en ese caso es obligatorio). A crédito, el monto neto pendiente por
+  defecto es el total **menos la detracción**, como SOL (total 2 103.94, detracción 252.47 → neto pendiente 1 851.47).
+  Con `detraction`, `operationType` debe ser `0101` o `1001`.
+- Verificado contra SUNAT beta (16/11/2026): sin tipo `1001` el bloque se rechaza (3128); sin cuenta, 3034; sin código
+  de servicio, 3127; sin la leyenda `2006`, observación 4265. Beta **no** valida el monto, el código ni el medio de pago
+  (aceptó un monto de 100 sobre 141.60 y el código 099): por eso lo valida el SDK. La detracción no cambia los totales.
+
 ## Reglas de SUNAT que conviene tener presentes
 
 Verificadas contra el manual del programador de SUNAT y contra el ambiente beta:
@@ -407,6 +439,7 @@ lo tiene otro autor, por eso se usa el scope.
 | `… invoice-prod-send.ts out/factura.json plan`                            | factura sin red: valida, calcula, firma y muestra el resumen (ver `scripts/examples/invoice.example.json`)                       |
 | `… invoice-prod-send.ts out/factura.json status`                          | solo lectura: ¿ya existe esa serie y número en SUNAT? (úsalo tras un error de red)                                               |
 | `… invoice-prod-send.ts out/nota.json plan`                               | igual con una nota de crédito (el JSON lleva `modifiedDocument`); `status` y `send` también valen                                |
+| `pnpm tsx scripts/beta-detraction.ts`                                     | envía a beta facturas con detracción (contado y crédito)                                                                         |
 | `pnpm tsx scripts/beta-credit-note.ts`                                    | envía a beta una factura y notas de crédito (variantes del XML y los 10 motivos)                                                 |
 | `… invoice-prod-send.ts out/factura.json send`                            | emite **una factura REAL**: comprueba que el número esté libre y pide escribir `ENVIAR <nombre>`                                 |
 | `pnpm build`                                                              | genera `dist/` (ESM, CJS y tipos)                                                                                                |
