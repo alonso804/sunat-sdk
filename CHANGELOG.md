@@ -1,6 +1,6 @@
 # Cambios
 
-## Sin publicar
+## 0.5.0
 
 ### Nuevo: detracción en facturas
 
