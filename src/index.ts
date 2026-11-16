@@ -1,4 +1,11 @@
-export { Currency, RELATED_DOCUMENT_TYPES, TRANSFER_REASONS, TransportMode } from './catalogs';
+export {
+  CREDIT_NOTE_REASONS,
+  type CreditNoteReason,
+  Currency,
+  RELATED_DOCUMENT_TYPES,
+  TRANSFER_REASONS,
+  TransportMode,
+} from './catalogs';
 export type { Cdr } from './cdr';
 export type {
   DespatchPdfRetryOptions,
@@ -14,6 +21,9 @@ export type {
 } from './client';
 export { SendInvoiceStatus, SunatClient } from './client';
 export { ENDPOINTS, Environment } from './config';
+export type { CreditNote, CreditNoteInput } from './credit-note/schema';
+export { CreditNoteSchema } from './credit-note/schema';
+export type { CreditNoteSummary, PreparedCreditNote } from './credit-note/service';
 export type { Despatch, DespatchInput } from './despatch/schema';
 export { DespatchSchema } from './despatch/schema';
 export type { DespatchResult, DespatchSendOptions, DespatchSummary, PreparedDespatch } from './despatch/service';

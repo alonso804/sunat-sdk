@@ -1,7 +1,7 @@
 /**
  * Verificación de facturas contra PRODUCCIÓN, SOLO LECTURA. No envía ni crea ningún comprobante.
  *
- *   pnpm tsx --env-file=.env scripts/invoice-prod-check.ts [serie] [número]
+ *   pnpm tsx --env-file=.env scripts/invoice-prod-check.ts [serie] [número] [tipo]
  *
  * Consulta con `getStatusCdr` (servicio de consulta de SUNAT) el estado de un comprobante. Por defecto pregunta
  * por F001-99999999, que casi seguro no existe: lo que interesa no es el resultado de la consulta sino comprobar
@@ -28,6 +28,7 @@ const need = (name: string): string => {
 
 const series = process.argv[2] ?? 'F001';
 const number = Number(process.argv[3] ?? '99999999');
+const type = (process.argv[4] ?? '01') as '01' | '07' | '08'; // 01 factura, 07 nota de crédito, 08 nota de débito
 
 const client = new SunatClient({
   environment: 'production',
@@ -48,7 +49,7 @@ const client = new SunatClient({
 
 console.log(`Consultando en PRODUCCIÓN (solo lectura) el estado de ${series}-${number}…`);
 try {
-  const result = await client.getInvoiceStatus({ series, number });
+  const result = await client.getInvoiceStatus({ series, number, type });
   console.log(`\nSUNAT respondió: código=${result.statusCode}  mensaje=${result.statusMessage}`);
   if (result.cdr) console.log(`CDR adjunto: ${result.cdr.referenceId} → ${result.cdr.description}`);
   if (result.statusCode === '0127')

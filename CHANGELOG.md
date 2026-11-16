@@ -11,6 +11,18 @@
   emisión de facturas y guías no cambia. `isValidRuc` sigue en la entrada principal.
 - Se quitó `scripts/ruc-consult.ts`.
 
+### Nuevo: notas de crédito (07) sobre facturas
+
+- `client.prepareCreditNote(...)` valida, calcula y firma **sin contactar a SUNAT** (devuelve `summary` y `warnings`);
+  `client.sendCreditNote(prepared)` la envía por el mismo servicio y con los mismos resultados, errores y reintentos que
+  `sendInvoice`. Motivos 01 a 10 del catálogo 09 (`CREDIT_NOTE_REASONS`); el motivo 02 admite la factura de reemplazo
+  (`replacementInvoice`). Nuevos tipos exportados: `CreditNoteInput`, `CreditNote`, `CreditNoteSchema`,
+  `PreparedCreditNote`, `CreditNoteSummary`, `CreditNoteReason`.
+- Probada contra SUNAT **beta**; no probada en producción. Las reglas de montos por motivo las decide SUNAT (ver README).
+  Quedan para después: motivo 13 (cuotas del crédito), notas de débito y notas sobre boletas.
+- `scripts/invoice-prod-send.ts` emite también notas de crédito; `scripts/invoice-prod-check.ts` acepta el tipo (`07`).
+- Interno: lo común del XML de factura y nota pasó a `src/ubl-xml.ts` (el XML de la factura no cambia).
+
 ## 0.3.0
 
 - El paquete pasa de GitHub Packages (privado) a **npm** (público, con _provenance_) y se publica con licencia MIT.

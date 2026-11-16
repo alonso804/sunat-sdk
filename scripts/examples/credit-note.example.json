@@ -1,0 +1,21 @@
+{
+  "series": "FC01",
+  "number": 1,
+  "currency": "PEN",
+  "modifiedDocument": { "series": "F001", "number": 1 },
+  "reason": "01",
+  "reasonDescription": "ANULACION DE LA OPERACION (EJEMPLO)",
+  "customer": {
+    "ruc": "20131312955",
+    "name": "RAZON SOCIAL DEL CLIENTE (EJEMPLO)"
+  },
+  "items": [
+    {
+      "description": "DESCRIPCION DEL PRODUCTO (EJEMPLO)",
+      "quantity": 1,
+      "unit": "NIU",
+      "unitValue": "12.00",
+      "igvAffectation": "10"
+    }
+  ]
+}
