@@ -43,7 +43,7 @@ export type CalculatedInvoice = {
   totals: CalculatedTotals;
 };
 
-export function calculateInvoice(invoice: Invoice): CalculatedInvoice {
+export function calculateInvoice(invoice: Pick<Invoice, 'items'>): CalculatedInvoice {
   const igvRate = dec(IGV_RATE);
 
   const lines: CalculatedLine[] = invoice.items.map((item, i) => {

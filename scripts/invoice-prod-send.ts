@@ -1,5 +1,5 @@
 /**
- * Emisión de UNA factura en PRODUCCIÓN, con salvaguardas. Una factura aceptada es un documento tributario REAL:
+ * Emisión de UNA factura (o nota de crédito) en PRODUCCIÓN, con salvaguardas. Una factura aceptada es un documento tributario REAL:
  * no hay forma de probar en producción sin efectos. Por eso este script nunca envía sin tu confirmación escrita.
  *
  *   pnpm tsx --env-file=.env scripts/invoice-prod-send.ts <archivo.json> [etapa]
@@ -12,6 +12,8 @@
  *   send    Consulta primero (solo lectura) que el número esté libre; muestra el resumen y pide escribir
  *           ENVIAR <nombre>. Solo entonces envía. Guarda XML firmado y CDR en out/ (carpeta ignorada por git).
  *
+ * Si el JSON trae `modifiedDocument` se trata como NOTA DE CRÉDITO (misma forma que `prepareCreditNote`, ver
+ * scripts/examples/credit-note.example.json); si no, como factura.
  * El archivo JSON tiene la misma forma que `prepareInvoice` (ver scripts/examples/invoice.example.json), sin
  * `issuedAt`: la fecha de emisión es el momento del envío. Guarda tu archivo real en out/ (no se sube a git).
  *
@@ -27,7 +29,9 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import {
+  type CreditNoteInput,
   type InvoiceInput,
+  type PreparedCreditNote,
   type PreparedInvoice,
   SunatClient,
   SunatFaultError,
@@ -112,18 +116,29 @@ function printError(error: unknown): never {
   process.exit(1);
 }
 
-function prepare(): { prepared: PreparedInvoice; input: InvoiceInput } {
-  const input = JSON.parse(readFileSync(file as string, 'utf8')) as InvoiceInput;
+type Prepared = PreparedInvoice | PreparedCreditNote;
+const documentType = (): '01' | '07' => (isCreditNote ? '07' : '01');
+const label = (): string => (isCreditNote ? 'Nota de crédito' : 'Factura');
+const parsedFile = JSON.parse(readFileSync(file as string, 'utf8')) as InvoiceInput | CreditNoteInput;
+const isCreditNote = 'modifiedDocument' in parsedFile;
+
+function prepare(): { prepared: Prepared } {
+  const input = parsedFile;
   if ('issuedAt' in input) {
     console.error('El archivo no debe llevar "issuedAt": la fecha de emisión es el momento del envío.');
     process.exit(2);
   }
-  return { prepared: client.prepareInvoice(input), input };
+  return {
+    prepared: isCreditNote
+      ? client.prepareCreditNote(input as CreditNoteInput)
+      : client.prepareInvoice(input as InvoiceInput),
+  };
 }
 
-function show(prepared: PreparedInvoice): void {
+function show(prepared: Prepared): void {
   const s = prepared.summary;
-  console.log(`\nFactura ${s.series}-${s.number}  (${prepared.baseName})`);
+  console.log(`\n${label()} ${s.series}-${s.number}  (${prepared.baseName})`);
+  if ('warnings' in prepared) for (const w of prepared.warnings) console.log(`AVISO: ${w}`);
   console.log(`Fecha de emisión: ${prepared.issuedAt.toISOString()} (hora de Lima en el XML)`);
   console.log('\nResumen:');
   console.log(JSON.stringify(s, null, 2));
@@ -140,7 +155,7 @@ try {
   if (stage === 'status') {
     const { series, number } = prepared.summary;
     console.log(`Consultando en PRODUCCIÓN (solo lectura) ${series}-${number}…`);
-    const result = await client.getInvoiceStatus({ series, number });
+    const result = await client.getInvoiceStatus({ series, number, type: documentType() });
     console.log(`SUNAT respondió: código=${result.statusCode}  mensaje=${result.statusMessage}`);
     if (result.cdr)
       console.log(`CDR: ${result.cdr.referenceId} → ${result.cdr.description}  (la factura EXISTE en SUNAT)`);
@@ -149,7 +164,7 @@ try {
   if (stage === 'send') {
     const { series, number } = prepared.summary;
     console.log(`Comprobando (solo lectura) que ${series}-${number} esté libre en SUNAT…`);
-    const existing = await client.getInvoiceStatus({ series, number });
+    const existing = await client.getInvoiceStatus({ series, number, type: documentType() });
     console.log(`SUNAT respondió: código=${existing.statusCode}  mensaje=${existing.statusMessage}`);
     if (existing.cdr) {
       console.error(
@@ -160,7 +175,7 @@ try {
 
     show(prepared);
     console.log(
-      '\n*** ESTO CREA UNA FACTURA REAL EN SUNAT. Tiene efectos tributarios y no se deshace con un botón. ***',
+      '\n*** ESTO CREA UN COMPROBANTE REAL EN SUNAT. Tiene efectos tributarios y no se deshace con un botón. ***',
     );
     let answer = process.env.INVOICE_CONFIRM ?? '';
     if (!answer) {
@@ -180,7 +195,9 @@ try {
       process.exit(0);
     }
 
-    const result = await client.sendInvoice(prepared);
+    const result = isCreditNote
+      ? await client.sendCreditNote(prepared as PreparedCreditNote)
+      : await client.sendInvoice(prepared as PreparedInvoice);
     if (result.status === 'rejected') {
       console.error(`\nRECHAZADA  código=${result.code}  mensaje=${result.message}`);
       console.error(`El número ${series}-${number} quedó CONSUMIDO. Corrige y emite con el siguiente número.`);

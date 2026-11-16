@@ -119,3 +119,21 @@ export const DESPATCH_INDICATORS = {
   emptyVehicleReturn: 'SUNAT_Envio_IndicadorRetornoVehiculoVacio',
   carrierVehicleAndDrivers: 'SUNAT_Envio_IndicadorVehiculoConductoresTransp',
 } as const;
+
+/**
+ * Catálogo 09: tipo de nota de crédito electrónica (anexo 8 de la RS 097-2012/SUNAT). Se soportan los motivos 01–10;
+ * el 13 (corregir monto y cuotas del crédito) queda fuera por ahora.
+ */
+export const CREDIT_NOTE_REASONS = {
+  '01': 'Anulación de la operación',
+  '02': 'Anulación por error en el RUC',
+  '03': 'Corrección por error en la descripción',
+  '04': 'Descuento global',
+  '05': 'Descuento por ítem',
+  '06': 'Devolución total',
+  '07': 'Devolución por ítem',
+  '08': 'Bonificación',
+  '09': 'Disminución en el valor',
+  '10': 'Otros conceptos',
+} as const;
+export type CreditNoteReason = keyof typeof CREDIT_NOTE_REASONS;

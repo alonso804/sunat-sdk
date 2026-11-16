@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { strToU8 } from 'fflate';
 import forge from 'node-forge';
 import { validateXML } from 'xmllint-wasm';
-import type { DespatchInput, InvoiceInput, IssuerInput } from '../src';
+import type { CreditNoteInput, DespatchInput, InvoiceInput, IssuerInput } from '../src';
 import type { SigningKey } from '../src/signing/certificate';
 import { zipSingleFile } from '../src/zip';
 
@@ -42,6 +42,21 @@ export function sampleInvoice(overrides: Partial<InvoiceInput> = {}): InvoiceInp
   };
 }
 
+/** Nota de crédito de ejemplo: anulación de la factura F001-1 con los mismos ítems de `sampleInvoice`. */
+export function sampleCreditNote(overrides: Partial<CreditNoteInput> = {}): CreditNoteInput {
+  const { customer, items } = sampleInvoice();
+  return {
+    series: 'FC01',
+    number: 1,
+    issuedAt: new Date('2026-10-31T15:30:00-05:00'),
+    modifiedDocument: { series: 'F001', number: 1 },
+    reason: '01',
+    customer,
+    items,
+    ...overrides,
+  };
+}
+
 /** GRE remitente de ejemplo: venta con transporte privado. */
 export function sampleDespatch(overrides: Partial<DespatchInput> = {}): DespatchInput {
   return {
@@ -73,7 +88,11 @@ export function sampleDespatch(overrides: Partial<DespatchInput> = {}): Despatch
 
 /** Esquemas UBL 2.1 de OASIS (test/xsd): el principal de cada documento está en maindoc/ e importa los de common/. */
 const XSD_DIR = new URL('./xsd/ubl-2.1/', import.meta.url);
-const XSD_MAIN = { Invoice: 'UBL-Invoice-2.1.xsd', DespatchAdvice: 'UBL-DespatchAdvice-2.1.xsd' } as const;
+const XSD_MAIN = {
+  Invoice: 'UBL-Invoice-2.1.xsd',
+  CreditNote: 'UBL-CreditNote-2.1.xsd',
+  DespatchAdvice: 'UBL-DespatchAdvice-2.1.xsd',
+} as const;
 
 type SchemaFile = { fileName: string; contents: string };
 let commonSchemas: SchemaFile[] | undefined;

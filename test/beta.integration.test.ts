@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SunatClient } from '../src';
 import type { SignatureAlgorithm } from '../src/signing/xmldsig';
-import { sampleInvoice, TEST_ISSUER, testCertificate } from './helpers';
+import { sampleCreditNote, sampleInvoice, TEST_ISSUER, testCertificate } from './helpers';
 
 /**
  * Pruebas contra el ambiente BETA real de SUNAT (red). Se omiten salvo que se ejecuten con:
@@ -37,5 +37,19 @@ describe.skipIf(!enabled)('SUNAT beta (red real)', () => {
       expect(result.cdr.referenceId).toBe(`F001-${counter}`);
       expect(result.cdr.description).toMatch(/aceptada/i);
     }
+  });
+
+  it('acepta una nota de crédito que modifica una factura aceptada', async () => {
+    await sleep(2_000);
+    const client = clientFor('sha1');
+    const number = ++counter;
+    await client.sendInvoice(client.prepareInvoice(sampleInvoice({ number, issuedAt: new Date() })));
+    await sleep(2_000);
+    const result = await client.sendCreditNote(
+      client.prepareCreditNote(
+        sampleCreditNote({ number, issuedAt: new Date(), modifiedDocument: { series: 'F001', number } }),
+      ),
+    );
+    expect(result.status).toBe('accepted');
   });
 });

@@ -1,18 +1,21 @@
 import { amountInWords } from '../amount-in-words';
-import { AFFECTATIONS, DOCUMENT_TYPE, IDENTITY_TYPE } from '../catalogs';
-import { D, type Dec, fmt2, fmtUpTo } from '../money';
-import { escapeXml as esc, limaDateTime, SIGNATURE_ID, singleLine } from '../xml';
-import type { CalculatedInvoice, CalculatedLine } from './calculate';
+import { DOCUMENT_TYPE } from '../catalogs';
+import {
+  amount,
+  customerParty,
+  documentLine,
+  EMPTY_EXTENSIONS,
+  signatureBlock,
+  supplierParty,
+  taxTotalBlock,
+  ublNamespaces,
+} from '../ubl-xml';
+import { escapeXml as esc, limaDateTime, singleLine } from '../xml';
+import type { CalculatedInvoice } from './calculate';
 import type { ResolvedPayment } from './payment';
 import { type Invoice, type Issuer, PaymentType } from './schema';
 
-const NAMESPACES = [
-  'xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"',
-  'xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"',
-  'xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"',
-  'xmlns:ds="http://www.w3.org/2000/09/xmldsig#"',
-  'xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"',
-].join(' ');
+const NAMESPACES = ublNamespaces('Invoice-2');
 
 /** Forma de pago (anexo 9-A de la RS 193-2020/SUNAT): contado, o crédito con el monto neto pendiente y una línea por cuota. */
 function paymentTerms(payment: ResolvedPayment, currency: string): string {
@@ -50,109 +53,6 @@ export function invoiceBaseName(issuerRuc: string, invoice: Pick<Invoice, 'serie
   return `${issuerRuc}-${DOCUMENT_TYPE.invoice}-${invoice.series}-${invoice.number}`;
 }
 
-function amount(tag: string, value: Dec, currency: string): string {
-  return `<cbc:${tag} currencyID="${currency}">${fmt2(value)}</cbc:${tag}>`;
-}
-
-function taxSubtotal(
-  taxable: Dec,
-  tax: Dec,
-  currency: string,
-  scheme: { id: string; name: string; code: string },
-): string {
-  return (
-    '<cac:TaxSubtotal>' +
-    amount('TaxableAmount', taxable, currency) +
-    amount('TaxAmount', tax, currency) +
-    `<cac:TaxCategory><cac:TaxScheme><cbc:ID>${scheme.id}</cbc:ID><cbc:Name>${scheme.name}</cbc:Name><cbc:TaxTypeCode>${scheme.code}</cbc:TaxTypeCode></cac:TaxScheme></cac:TaxCategory>` +
-    '</cac:TaxSubtotal>'
-  );
-}
-
-function supplierParty(issuer: Issuer): string {
-  const a = issuer.address;
-  const contact =
-    issuer.phone || issuer.email
-      ? '<cac:Contact>' +
-        (issuer.phone ? `<cbc:Telephone>${esc(issuer.phone)}</cbc:Telephone>` : '') +
-        (issuer.email ? `<cbc:ElectronicMail>${esc(issuer.email)}</cbc:ElectronicMail>` : '') +
-        '</cac:Contact>'
-      : '';
-  return (
-    '<cac:AccountingSupplierParty><cac:Party>' +
-    `<cac:PartyIdentification><cbc:ID schemeID="${IDENTITY_TYPE.ruc}">${issuer.ruc}</cbc:ID></cac:PartyIdentification>` +
-    (issuer.tradeName
-      ? `<cac:PartyName><cbc:Name>${esc(singleLine(issuer.tradeName))}</cbc:Name></cac:PartyName>`
-      : '') +
-    '<cac:PartyLegalEntity>' +
-    `<cbc:RegistrationName>${esc(singleLine(issuer.legalName))}</cbc:RegistrationName>` +
-    '<cac:RegistrationAddress>' +
-    `<cbc:ID>${a.ubigeo}</cbc:ID>` +
-    `<cbc:AddressTypeCode>${a.establishmentCode}</cbc:AddressTypeCode>` +
-    (a.urbanization ? `<cbc:CitySubdivisionName>${esc(singleLine(a.urbanization))}</cbc:CitySubdivisionName>` : '') +
-    `<cbc:CityName>${esc(a.province)}</cbc:CityName>` +
-    `<cbc:CountrySubentity>${esc(a.department)}</cbc:CountrySubentity>` +
-    `<cbc:District>${esc(a.district)}</cbc:District>` +
-    `<cac:AddressLine><cbc:Line>${esc(singleLine(a.street))}</cbc:Line></cac:AddressLine>` +
-    `<cac:Country><cbc:IdentificationCode>${esc(a.countryCode)}</cbc:IdentificationCode></cac:Country>` +
-    '</cac:RegistrationAddress>' +
-    '</cac:PartyLegalEntity>' +
-    contact +
-    '</cac:Party></cac:AccountingSupplierParty>'
-  );
-}
-
-function customerParty(customer: Invoice['customer']): string {
-  const address = customer.address
-    ? '<cac:RegistrationAddress>' +
-      `<cac:AddressLine><cbc:Line>${esc(singleLine(customer.address))}</cbc:Line></cac:AddressLine>` +
-      '<cac:Country><cbc:IdentificationCode>PE</cbc:IdentificationCode></cac:Country>' +
-      '</cac:RegistrationAddress>'
-    : '';
-  return (
-    '<cac:AccountingCustomerParty><cac:Party>' +
-    `<cac:PartyIdentification><cbc:ID schemeID="${IDENTITY_TYPE.ruc}">${customer.ruc}</cbc:ID></cac:PartyIdentification>` +
-    `<cac:PartyLegalEntity><cbc:RegistrationName>${esc(singleLine(customer.name))}</cbc:RegistrationName>${address}</cac:PartyLegalEntity>` +
-    '</cac:Party></cac:AccountingCustomerParty>'
-  );
-}
-
-function invoiceLine(line: CalculatedLine, currency: string): string {
-  const aff = AFFECTATIONS[line.affectation];
-  const percent = fmt2(line.rate.mul(100));
-  const taxable = line.lineValue;
-  return (
-    '<cac:InvoiceLine>' +
-    `<cbc:ID>${line.index}</cbc:ID>` +
-    `<cbc:InvoicedQuantity unitCode="${line.unit}">${fmtUpTo(line.quantity, 10)}</cbc:InvoicedQuantity>` +
-    amount('LineExtensionAmount', line.lineValue, currency) +
-    '<cac:PricingReference><cac:AlternativeConditionPrice>' +
-    `<cbc:PriceAmount currencyID="${currency}">${fmtUpTo(line.unitPrice, 10)}</cbc:PriceAmount>` +
-    '<cbc:PriceTypeCode>01</cbc:PriceTypeCode>' +
-    '</cac:AlternativeConditionPrice></cac:PricingReference>' +
-    '<cac:TaxTotal>' +
-    amount('TaxAmount', line.igv, currency) +
-    '<cac:TaxSubtotal>' +
-    amount('TaxableAmount', taxable, currency) +
-    amount('TaxAmount', line.igv, currency) +
-    '<cac:TaxCategory>' +
-    `<cbc:Percent>${percent}</cbc:Percent>` +
-    `<cbc:TaxExemptionReasonCode>${line.affectation}</cbc:TaxExemptionReasonCode>` +
-    `<cac:TaxScheme><cbc:ID>${aff.scheme.id}</cbc:ID><cbc:Name>${aff.scheme.name}</cbc:Name><cbc:TaxTypeCode>${aff.scheme.code}</cbc:TaxTypeCode></cac:TaxScheme>` +
-    '</cac:TaxCategory>' +
-    '</cac:TaxSubtotal>' +
-    '</cac:TaxTotal>' +
-    '<cac:Item>' +
-    `<cbc:Description>${esc(singleLine(line.description))}</cbc:Description>` +
-    (line.productCode
-      ? `<cac:SellersItemIdentification><cbc:ID>${esc(line.productCode)}</cbc:ID></cac:SellersItemIdentification>`
-      : '') +
-    '</cac:Item>' +
-    `<cac:Price><cbc:PriceAmount currencyID="${currency}">${fmtUpTo(line.unitValue, 10)}</cbc:PriceAmount></cac:Price>` +
-    '</cac:InvoiceLine>'
-  );
-}
-
 /**
  * Genera el XML UBL 2.1 (sin firmar) de una factura al contado.
  * El orden de los elementos sigue la secuencia del esquema UBL; no reordenar.
@@ -169,16 +69,10 @@ export function buildInvoiceXml(params: {
   const cur = invoice.currency;
   const { date, time } = limaDateTime(issuedAt);
 
-  const zero = new D(0);
-  const taxSubtotals =
-    (totals.hasTaxed ? taxSubtotal(totals.taxedBase, totals.igv, cur, AFFECTATIONS['10'].scheme) : '') +
-    (totals.hasUnaffected ? taxSubtotal(totals.unaffectedBase, zero, cur, AFFECTATIONS['30'].scheme) : '') +
-    (totals.hasExonerated ? taxSubtotal(totals.exoneratedBase, zero, cur, AFFECTATIONS['20'].scheme) : '');
-
   return (
     '<?xml version="1.0" encoding="UTF-8"?>' +
     `<Invoice ${NAMESPACES}>` +
-    '<ext:UBLExtensions><ext:UBLExtension><ext:ExtensionContent/></ext:UBLExtension></ext:UBLExtensions>' +
+    EMPTY_EXTENSIONS +
     '<cbc:UBLVersionID>2.1</cbc:UBLVersionID>' +
     '<cbc:CustomizationID>2.0</cbc:CustomizationID>' +
     `<cbc:ID>${invoice.series}-${invoice.number}</cbc:ID>` +
@@ -189,24 +83,17 @@ export function buildInvoiceXml(params: {
     (invoice.note ? `<cbc:Note>${esc(singleLine(invoice.note))}</cbc:Note>` : '') +
     `<cbc:DocumentCurrencyCode>${cur}</cbc:DocumentCurrencyCode>` +
     references(invoice) +
-    '<cac:Signature>' +
-    `<cbc:ID>SIGN${issuer.ruc}</cbc:ID>` +
-    `<cac:SignatoryParty><cac:PartyIdentification><cbc:ID>${issuer.ruc}</cbc:ID></cac:PartyIdentification><cac:PartyName><cbc:Name>${esc(singleLine(issuer.legalName))}</cbc:Name></cac:PartyName></cac:SignatoryParty>` +
-    `<cac:DigitalSignatureAttachment><cac:ExternalReference><cbc:URI>#${SIGNATURE_ID}</cbc:URI></cac:ExternalReference></cac:DigitalSignatureAttachment>` +
-    '</cac:Signature>' +
+    signatureBlock(issuer) +
     supplierParty(issuer) +
     customerParty(invoice.customer) +
     paymentTerms(payment, cur) +
-    '<cac:TaxTotal>' +
-    amount('TaxAmount', totals.igv, cur) +
-    taxSubtotals +
-    '</cac:TaxTotal>' +
+    taxTotalBlock(totals, cur) +
     '<cac:LegalMonetaryTotal>' +
     amount('LineExtensionAmount', totals.lineExtension, cur) +
     amount('TaxInclusiveAmount', totals.taxInclusive, cur) +
     amount('PayableAmount', totals.payable, cur) +
     '</cac:LegalMonetaryTotal>' +
-    lines.map((l) => invoiceLine(l, cur)).join('') +
+    lines.map((l) => documentLine(l, cur, { line: 'InvoiceLine', quantity: 'InvoicedQuantity' })).join('') +
     '</Invoice>'
   );
 }

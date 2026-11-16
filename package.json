@@ -1,7 +1,7 @@
 {
   "name": "@alonso804/sunat-sdk",
   "version": "0.4.0",
-  "description": "SDK en TypeScript para integrarse directo con SUNAT (facturas y guías de remisión electrónicas) sin PSE/OSE",
+  "description": "SDK en TypeScript para integrarse directo con SUNAT (facturas, notas de crédito y guías de remisión electrónicas) sin PSE/OSE",
   "license": "MIT",
   "author": "Alonso Barrios",
   "repository": {
@@ -16,6 +16,7 @@
     "sunat",
     "peru",
     "factura-electronica",
+    "nota-de-credito",
     "comprobantes-electronicos",
     "guia-de-remision",
     "gre",

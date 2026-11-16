@@ -2,6 +2,8 @@ import { amountInWords } from './amount-in-words';
 import type { Currency } from './catalogs';
 import { type Cdr, readCdrFromApplicationResponse } from './cdr';
 import { ENDPOINTS, Environment } from './config';
+import type { CreditNoteInput } from './credit-note/schema';
+import { type PreparedCreditNote, prepareCreditNote } from './credit-note/service';
 import type { DespatchInput } from './despatch/schema';
 import {
   type DespatchResult,
@@ -383,8 +385,53 @@ export class SunatClient {
    * ```
    */
   async sendInvoice(prepared: PreparedInvoice): Promise<SendInvoiceResult> {
-    const { baseName } = prepared;
-    const zip = zipSingleFile(`${baseName}.xml`, prepared.signedXml);
+    return this.sendBillDocument(prepared.baseName, prepared.signedXml);
+  }
+
+  /**
+   * Valida la nota de crédito (tipo 07) sobre una factura, calcula totales e IGV, genera el XML UBL 2.1 y lo firma.
+   * **No contacta a SUNAT.** Muestra `summary` y `warnings` al usuario y pide confirmación antes de `sendCreditNote`.
+   *
+   * @param input - Serie (`F` + 3 caracteres), correlativo, comprobante que modifica (`modifiedDocument`), motivo
+   *   (catálogo 09, 01 a 10), cliente (el mismo de la factura) e ítems con los mismos campos de la factura: bienes
+   *   devueltos (servicios: cantidad 1) o el importe del ajuste. La moneda debe ser la de la factura.
+   * @returns La nota firmada (`signedXml`, `baseName`), su `summary` y los `warnings` para el usuario.
+   * @throws {SunatValidationError} Si un dato no es válido; el detalle por campo está en `issues`.
+   *
+   * @example
+   * ```ts
+   * const prepared = client.prepareCreditNote({
+   *   series: 'FC01',
+   *   number: 1,
+   *   modifiedDocument: { series: 'F001', number: 15 },
+   *   reason: '01', // anulación de la operación
+   *   customer: { ruc: '20131312955', name: 'CLIENTE SAC' },
+   *   items: [{ description: 'CEMENTO 42.5 KG', quantity: 10, unitPrice: 29.5 }],
+   * });
+   * ```
+   */
+  prepareCreditNote(input: CreditNoteInput): PreparedCreditNote {
+    return prepareCreditNote({
+      issuer: this.issuer,
+      input,
+      signingKey: this.#config.signingKey,
+      algorithm: this.#config.signatureAlgorithm ?? SignatureAlgorithm.sha1,
+      now: this.#config.now ?? (() => new Date()),
+      textCharset: this.#config.textCharset ?? TextCharset.unicode,
+    });
+  }
+
+  /**
+   * Envía a SUNAT una nota de crédito preparada con `prepareCreditNote`. **En producción tiene efecto tributario.**
+   * Funciona igual que `sendInvoice` (mismo servicio, mismos resultados, errores y reintentos): un rechazo consume el
+   * correlativo de la nota; ante un error de red consulta `getInvoiceStatus({ series, number, type: '07' })` antes de reenviar.
+   */
+  async sendCreditNote(prepared: PreparedCreditNote): Promise<SendInvoiceResult> {
+    return this.sendBillDocument(prepared.baseName, prepared.signedXml);
+  }
+
+  private async sendBillDocument(baseName: string, signedXml: string): Promise<SendInvoiceResult> {
+    const zip = zipSingleFile(`${baseName}.xml`, signedXml);
 
     let applicationResponse: string;
     try {

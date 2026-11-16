@@ -5,8 +5,8 @@ pensado para usarse desde otras aplicaciones (desktop / móvil vía un backend N
 
 > **Estado: en construcción.** La **guía de remisión del remitente (GRE 09)** está **probada en producción**
 > (SUNAT no tiene ambiente de pruebas para la GRE) y validada contra el esquema UBL 2.1.
-> La **factura electrónica (01)**, al contado y al crédito, funciona contra el ambiente **beta**; aún no se ha probado
-> en homologación ni producción.
+> La **factura electrónica (01)**, al contado y al crédito, y la **nota de crédito (07)** sobre facturas funcionan contra el
+> ambiente **beta**; aún no se han probado en homologación ni producción.
 
 > **Aviso legal.** Este proyecto es independiente: **no es un producto oficial de SUNAT** ni está afiliado a ella.
 > Se distribuye bajo licencia [MIT](LICENSE), **sin garantía de ningún tipo**. Emitir comprobantes tiene efectos
@@ -24,7 +24,8 @@ Cambios de cada versión y cómo actualizar: [CHANGELOG.md](CHANGELOG.md).
 | Validación local contra los XSD de UBL 2.1 (`xmllint-wasm`, sin instalar nada) | ✅ facturas y 4 variantes de GRE                            |
 | Factura a crédito (cuotas), orden de compra y guías relacionadas               | ✅ reglas verificadas contra SUNAT beta (ver más abajo)     |
 | Descuentos, anticipos, detracción                                              | ⏳                                                          |
-| Notas de crédito / débito, boletas                                             | ⏳                                                          |
+| Nota de crédito (07) sobre facturas, motivos 01–10                             | ✅ aceptada por SUNAT beta · no probada en producción       |
+| Notas de crédito motivo 13 (cuotas), notas de débito, boletas                  | ⏳                                                          |
 | Consulta de estado / CDR de facturas (`getStatusCdr`, `getInvoiceStatus`)      | ✅ implementada · solo existe en producción                 |
 | GRE transportista, motivos de importación/exportación, baja de GRE por API     | ⏳                                                          |
 | Lectura de comprobantes y guías emitidos (SIRE y otros)                        | ⏳                                                          |
@@ -212,6 +213,50 @@ if (sent.status === 'accepted' || sent.status === 'accepted_with_observations') 
 - El botón "Descargar representación" de la consulta de GRE en SOL puede aparecer deshabilitado para guías emitidas por
   API; la URL del QR sí funciona.
 
+### Nota de crédito (sobre facturas)
+
+```ts
+const prepared = client.prepareCreditNote({
+  series: 'FC01', // "F" + 3 caracteres cuando modifica una factura
+  number: 1,
+  modifiedDocument: { series: 'F001', number: 15 }, // la factura que se modifica
+  reason: '01', // catálogo 09: 01 anulación, 02 error en el RUC, 03 error en la descripción, 04 descuento global,
+  //               05 descuento por ítem, 06 devolución total, 07 devolución por ítem, 08 bonificación,
+  //               09 disminución en el valor, 10 otros (CREDIT_NOTE_REASONS)
+  reasonDescription: 'ANULACION DE LA OPERACION', // opcional: por defecto, el nombre del motivo
+  customer: { ruc: '20131312955', name: 'CLIENTE SAC' }, // el mismo cliente de la factura
+  items: [{ description: 'CEMENTO 42.5 KG', quantity: 10, unitPrice: 29.5 }], // mismos campos que la factura
+});
+console.log(prepared.summary, prepared.warnings); // para confirmar con el usuario
+const result = await client.sendCreditNote(prepared); // mismo resultado y errores que sendInvoice
+```
+
+Para consultar una nota ya informada: `client.getInvoiceStatus({ series: 'FC01', number: 1, type: '07' })`. En producción,
+`scripts/invoice-prod-send.ts` también emite notas (JSON con `modifiedDocument`, ver `scripts/examples/credit-note.example.json`).
+
+Verificado en la documentación oficial de SUNAT (guía XML de la nota de crédito, anexos de las RS 097-2012, 193-2020 y
+000032-2024, manual del programador):
+
+- Serie de 4 caracteres que **empieza con `F`** si modifica una factura; correlativo de 1 a 8 dígitos, independiente del de las
+  notas impresas. El SDK no mezcla la serie de la factura (`F001`) con la de la nota (`FC01` en los ejemplos): usa una distinta.
+- La moneda debe ser la del comprobante modificado. En los ítems: cantidad = bienes devueltos (servicios, 1) y precio = importe
+  del ajuste. En anulación/devolución total repite los ítems de la factura (`items: factura.items`).
+- Se envía el día de la emisión o, a más tardar, el **día calendario siguiente** (RS 193-2020, art. 3.1).
+- Con los motivos 02 y 03 la nota se emite hasta el **décimo día hábil del mes siguiente** al de la factura.
+- Un **rechazo (2000–3999) consume el correlativo** de la nota. Un error de red: consulta con `getInvoiceStatus` antes de reenviar.
+- Motivo 02: si ya emitiste la factura correcta, pásala en `replacementInvoice` (solo con ese motivo).
+
+Verificado contra SUNAT **beta** (16/11/2026): los 10 motivos, USD y afectaciones gravado/exonerado/inafecto se aceptan sin
+observaciones; el comprobante modificado va en `cac:BillingReference/cac:InvoiceDocumentReference` (con
+`CreditNoteDocumentReference`, como en una tabla de la guía, beta rechaza con 2524 "Debe indicar el documento afectado").
+Beta **no** comprueba que la factura modificada exista ni su serie.
+
+**No verificado** (lo decide SUNAT; el SDK no lo valida y un rechazo consume el número): reglas de montos por motivo (si 01/06
+exigen el mismo total que la factura, si el total puede superarlo), fechas contra la factura original, si producción acepta
+notas desde sistema propio sobre facturas emitidas en SOL (serie `E001`), y la restricción de los motivos 02/03 sobre ciertos
+documentos (art. 24.1 de la RS 097-2012). Fuera de alcance por ahora: motivo 13 (cuotas del crédito), 11 y 12, boletas y
+notas de débito.
+
 #### Consultar una factura ya informada (`getStatusCdr`)
 
 ```ts
@@ -361,6 +406,8 @@ lo tiene otro autor, por eso se usa el scope.
 | `pnpm tsx --env-file=.env scripts/invoice-prod-check.ts [serie] [número]` | consulta de **solo lectura** (`getStatusCdr`): prueba usuario, clave y permiso de consulta en producción                         |
 | `… invoice-prod-send.ts out/factura.json plan`                            | factura sin red: valida, calcula, firma y muestra el resumen (ver `scripts/examples/invoice.example.json`)                       |
 | `… invoice-prod-send.ts out/factura.json status`                          | solo lectura: ¿ya existe esa serie y número en SUNAT? (úsalo tras un error de red)                                               |
+| `… invoice-prod-send.ts out/nota.json plan`                               | igual con una nota de crédito (el JSON lleva `modifiedDocument`); `status` y `send` también valen                                |
+| `pnpm tsx scripts/beta-credit-note.ts`                                    | envía a beta una factura y notas de crédito (variantes del XML y los 10 motivos)                                                 |
 | `… invoice-prod-send.ts out/factura.json send`                            | emite **una factura REAL**: comprueba que el número esté libre y pide escribir `ENVIAR <nombre>`                                 |
 | `pnpm build`                                                              | genera `dist/` (ESM, CJS y tipos)                                                                                                |
 
